@@ -340,12 +340,25 @@ async function captureCycle() {
   const fresh = micState.transcript && (nowTs - (micState.transcriptAt || 0) < 25000);
   // 直近の発話を数発分(90秒以内・最大3つ)まとめ、会話の流れに沿わせる。
   const thread = transcriptLog.filter((e) => nowTs - e.at < 90000).slice(-3).map((e) => e.text);
-  const transcript = (speaking || fresh) ? (thread.join(' / ') || micState.transcript) : '';
+  // 声↔画面バランス(0-100)。vr>0でのみ発話を採用し、画面のみ本数は (100-vr)/100 で増減。
+  const vr = Math.max(0, Math.min(100, cfg.voiceReactivity ?? 60));
+  const allowVoice = vr > 0;
+  const transcript = (allowVoice && (speaking || fresh)) ? (thread.join(' / ') || micState.transcript) : '';
   try {
     const recent = recentAiTexts();
-    // 発話があれば「声への反応」を主役に通常本数で、無ければ画面のみ控えめ本数で生成。
+    // 発話があれば「声への反応」を主役に満度で、無ければ画面のみ控えめ(バランスで増減)で生成。
     const voiceFocus = !!transcript;
-    const count = voiceFocus ? (cfg.commentsPerBatch || 10) : (cfg.commentsPerBatchScreen ?? 4);
+    let count;
+    if (voiceFocus) {
+      count = cfg.commentsPerBatch || 10;
+    } else {
+      count = Math.round((cfg.commentsPerBatchScreen ?? 4) * (100 - vr) / 100);
+      if (count < 1) {
+        // 声100%(画面弾幕なし)設定で発話も無い → 今回は生成しない。
+        if (controlWin) controlWin.webContents.send('status', { idle: true, lastContext: context });
+        return;   // cycleBusy 解除と reactivePending 処理は finally が行う
+      }
+    }
     const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (!running) return;

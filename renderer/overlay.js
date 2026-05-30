@@ -27,7 +27,8 @@ rebuildLanes();
 window.addEventListener('resize', rebuildLanes);
 
 // 弾幕の幅(おおよそ)から、衝突しないレーンを選ぶ。
-function pickLane(durationMs, estWidthPx) {
+// span: 縦に占有するレーン数（big は背が高いので2レーン分確保して重なりを防ぐ）。
+function pickLane(durationMs, estWidthPx, span = 1) {
   const now = performance.now();
   const screenW = window.innerWidth;
   // 弾幕が画面右端を完全に抜けるまでの時間 = 後続が同レーンに入れるまでの猶予。
@@ -35,14 +36,17 @@ function pickLane(durationMs, estWidthPx) {
   const speed = (screenW + estWidthPx) / durationMs;
   const clearTime = now + estWidthPx / speed + 120; // この時刻まで占有
 
-  // 空いている(=占有終了が過ぎている)レーンを上から探す
-  let best = -1;
-  let bestFree = Infinity;
-  for (let i = 0; i < lanes.length; i++) {
-    if (lanes[i] <= now) { best = i; break; }
-    if (lanes[i] < bestFree) { bestFree = lanes[i]; best = i; }
+  // span 連続レーンの「最も早く空くブロック」を上から探す（下端はみ出しはクランプ）。
+  const maxStart = Math.max(0, lanes.length - span);
+  let best = 0;
+  let bestScore = Infinity;       // ブロック内で最も遅い占有終了時刻
+  for (let i = 0; i <= maxStart; i++) {
+    let score = 0;
+    for (let k = 0; k < span; k++) score = Math.max(score, lanes[i + k]);
+    if (score <= now) { best = i; break; }     // 完全に空いている
+    if (score < bestScore) { bestScore = score; best = i; }
   }
-  lanes[best] = clearTime;
+  for (let k = 0; k < span; k++) lanes[best + k] = clearTime;
   return best;
 }
 
@@ -71,8 +75,11 @@ function spawn(comment) {
 
   // 速度は基準 speedMs を中心に少し揺らぐ（生き物感）
   const duration = style.speedMs * (0.85 + Math.random() * 0.4);
-  const lane = pickLane(duration, width);
-  const y = lane * laneHeight + 2;
+  // big は背が高いので2レーン確保。予約ブロック内で縦センタリングして重なりを防ぐ。
+  const span = big ? 2 : 1;
+  const lane = pickLane(duration, width, span);
+  const blockH = span * laneHeight;
+  const y = lane * laneHeight + Math.max(0, (blockH - fs) / 2);
 
   el.style.top = y + 'px';
   el.style.visibility = 'visible';

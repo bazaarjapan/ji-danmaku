@@ -94,9 +94,45 @@ function createControl() {
 
 // ---- 弾幕送出 ----------------------------------------------------------
 
+// AIコメントの重複抑制用: 直近に流したテキストをローリング保持する。
+// アンビエント/発話ざわめき(www/草/888)は"群衆らしい繰り返し"なので対象外。
+let recentAi = [];               // { n: 正規化テキスト, text: 原文, at: 時刻 }
+const RECENT_AI_TTL = 45000;     // 45秒以内は重複とみなす
+
+function normText(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, '').replace(/[。、!！?？w～~ー]+$/g, '');
+}
+
+// 'ai' バッチからバッチ内＋直近窓の重複を除去する。
+function dedupeAi(comments) {
+  const now = Date.now();
+  recentAi = recentAi.filter((r) => now - r.at < RECENT_AI_TTL);
+  const seen = new Set(recentAi.map((r) => r.n));
+  const out = [];
+  for (const c of comments) {
+    const n = normText(c.text);
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    recentAi.push({ n, text: c.text, at: now });
+    out.push(c);
+  }
+  return out;
+}
+
+// 直前に出たAIコメント原文（プロンプトの反復抑制に渡す）。
+function recentAiTexts(limit = 12) {
+  const now = Date.now();
+  return recentAi.filter((r) => now - r.at < RECENT_AI_TTL).slice(-limit).map((r) => r.text);
+}
+
 function sendComments(comments, source) {
   if (!overlayWin || !comments || !comments.length) return;
-  overlayWin.webContents.send('danmaku', { comments, source });
+  let list = comments;
+  if (source === 'ai') {
+    list = dedupeAi(comments);
+    if (!list.length) return;
+  }
+  overlayWin.webContents.send('danmaku', { comments: list, source });
 }
 
 function setOverlayStyle() {
@@ -225,7 +261,8 @@ async function captureCycle() {
     (Date.now() - (micState.transcriptAt || 0) < 25000);
   const transcript = (speaking || fresh) ? micState.transcript : '';
   try {
-    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath });
+    const recent = recentAiTexts();
+    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath, recent });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (!running) return;
     if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });
@@ -279,6 +316,7 @@ function stopRunning() {
   dripQueue = [];
   lastEnqueueAt = 0;
   dripDeadline = 0;
+  recentAi = [];
   prevSignature = null;
   idleStreak = 0;
   broadcastRunning();

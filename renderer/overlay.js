@@ -15,13 +15,18 @@ let style = {
 };
 
 let onScreen = 0;
-let lanes = [];          // 各レーンが「次に空く時刻(ms)」
+let lanes = [];          // 各レーンが「次に空く時刻(ms)」（流れる弾幕用）
+let ueLanes = [];        // 上固定(ue)コメントの行占有
+let shitaLanes = [];     // 下固定(shita)コメントの行占有
 let laneHeight = 40;
+const FIXED_MS = 4000;   // 上下固定コメントの表示時間(ms)
 
 function rebuildLanes() {
   laneHeight = Math.round(style.fontSize * 1.35);
   const count = Math.max(4, Math.floor(window.innerHeight / laneHeight));
   lanes = new Array(count).fill(0);
+  ueLanes = new Array(count).fill(0);
+  shitaLanes = new Array(count).fill(0);
 }
 rebuildLanes();
 window.addEventListener('resize', rebuildLanes);
@@ -53,18 +58,22 @@ function pickLane(durationMs, estWidthPx, span = 1) {
 function spawn(comment) {
   if (onScreen >= style.maxOnScreen) return;
 
-  const big = !!(comment.style && comment.style.big);
+  const st = comment.style || {};
+  const big = !!st.big;
+  const small = !big && !!st.small;                       // big を優先
+  const pos = (st.pos === 'ue' || st.pos === 'shita') ? st.pos : null;
 
   const el = document.createElement('div');
-  el.className = 'danmaku' + (big ? ' big' : '');
+  el.className = 'danmaku'
+    + (big ? ' big' : '') + (small ? ' small' : '') + (pos ? ' fixed' : '');
   el.textContent = comment.text;
 
-  // big は明確に拡大、通常は軽いゆらぎ(0.9〜1.15倍)で奥行き・生き物感を出す。
-  const sizeMul = big ? 1.6 : (0.9 + Math.random() * 0.25);
+  // big=拡大 / small=縮小 / 固定=等倍 / 通常流れる=軽いゆらぎ。
+  const sizeMul = big ? 1.6 : small ? 0.72 : (pos ? 1.0 : 0.9 + Math.random() * 0.25);
   const fs = Math.round(style.fontSize * sizeMul);
   el.style.fontSize = fs + 'px';
   el.style.opacity = String(style.opacity);
-  if (comment.style && comment.style.color) el.style.color = comment.style.color;
+  if (st.color) el.style.color = st.color;
   el.style.animation = 'pop 120ms linear';
 
   // 一旦不可視で配置して幅を測る
@@ -73,7 +82,34 @@ function spawn(comment) {
   stage.appendChild(el);
   const width = el.offsetWidth || comment.text.length * fs;
 
-  // 速度は基準 speedMs を中心に少し揺らぐ（生き物感）
+  const cleanup = () => {
+    if (el._done) return;
+    el._done = true;
+    el.remove();
+    onScreen--;
+  };
+
+  // ニコ動の ue/shita 固定コメント: 画面中央寄せで数秒静止 → フェードアウト。
+  if (pos) {
+    const rows = pos === 'ue' ? ueLanes : shitaLanes;
+    const now = performance.now();
+    let row = rows.findIndex((t) => t <= now);
+    if (row < 0) row = 0;                       // 満杯なら先頭に重ねる
+    rows[row] = now + FIXED_MS;
+    const y = pos === 'ue'
+      ? row * laneHeight + 2
+      : window.innerHeight - (row + 1) * laneHeight + 2;
+    el.style.left = '50%';
+    el.style.top = y + 'px';
+    el.style.transform = 'translateX(-50%)';
+    el.style.visibility = 'visible';
+    onScreen++;
+    setTimeout(() => { el.style.transition = 'opacity 400ms linear'; el.style.opacity = '0'; }, FIXED_MS - 400);
+    setTimeout(cleanup, FIXED_MS);
+    return;
+  }
+
+  // 流れる弾幕: 速度は基準 speedMs を中心に少し揺らぐ（生き物感）
   const duration = style.speedMs * (0.85 + Math.random() * 0.4);
   // big は背が高いので2レーン確保。予約ブロック内で縦センタリングして重なりを防ぐ。
   const span = big ? 2 : 1;
@@ -97,12 +133,6 @@ function spawn(comment) {
     el.style.transform = `translate(${endX}px, 0)`;
   });
 
-  const cleanup = () => {
-    if (el._done) return;
-    el._done = true;
-    el.remove();
-    onScreen--;
-  };
   el.addEventListener('transitionend', cleanup);
   // 保険のタイマー（transitionend を取りこぼしても消す）
   setTimeout(cleanup, duration + 500);

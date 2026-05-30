@@ -13,7 +13,8 @@ const SYSTEM = [
   '同じ語の連発を避け多様に。画面の"今"の中身に具体的に触れるものを多めに。',
   '配信者の発話があれば直接反応(同意/返答/オウム返し/茶化し)も入れる。',
   '誹謗中傷や不適切表現は避け明るく楽しく。',
-  'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意)}]}'
+  'たまに small:true(小さめのツッコミ) や pos:"ue"/"shita"(画面上/下に固定表示)も使える(各1割以内)。',
+  'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意),"small":true(任意),"pos":"ue"|"shita"(任意)}]}'
 ].join('');
 
 async function generate({ count, context, transcript, imagePath, recent, model, maxTokens }) {
@@ -68,7 +69,9 @@ async function generate({ count, context, transcript, imagePath, recent, model, 
         text: c.text.trim().slice(0, 40),
         style: {
           ...(typeof c.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(c.color) ? { color: c.color } : {}),
-          ...(c.big === true ? { big: true } : {})
+          ...(c.big === true ? { big: true } : {}),
+          ...(c.small === true ? { small: true } : {}),
+          ...(c.pos === 'ue' || c.pos === 'shita' ? { pos: c.pos } : {})
         }
       }));
   } catch (e) {

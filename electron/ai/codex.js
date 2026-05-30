@@ -41,13 +41,15 @@ function buildPrompt({ count, context, transcript, recent }) {
     '- 同じ語の連発を避け、大勢が見ている多様さを出す',
     '- 煽り/誹謗中傷/不適切表現はNG。明るく楽しいノリ',
     '- たまに color(例 "#ff5b5b") や big:true で盛り上げる(全体の2割以内)',
+    '- たまに small:true(小さめのボソッとしたツッコミ) や pos:"ue"/"shita"',
+    '  (画面の上/下に数秒固定表示される実況・ツッコミ)も使える(各1割以内)',
     '',
     ctxLine,
     voiceLine,
     ...(avoidLine ? [avoidLine] : []),
     '',
     'ツールやコマンドは一切使わず、最終メッセージで以下の形の JSON だけを返す:',
-    '{"comments":[{"text":"かわいいw"},{"text":"888","color":"#ffe14d"},{"text":"神","big":true}]}'
+    '{"comments":[{"text":"かわいいw"},{"text":"888","color":"#ffe14d"},{"text":"神","big":true},{"text":"ボソッ","small":true},{"text":"ここ重要","pos":"ue"}]}'
   ].join('\n');
 }
 
@@ -287,7 +289,9 @@ function normalize(j) {
       text: c.text.trim().slice(0, 40),
       style: {
         ...(typeof c.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(c.color) ? { color: c.color } : {}),
-        ...(c.big === true ? { big: true } : {})
+        ...(c.big === true ? { big: true } : {}),
+        ...(c.small === true ? { small: true } : {}),
+        ...(c.pos === 'ue' || c.pos === 'shita' ? { pos: c.pos } : {})
       }
     }));
 }

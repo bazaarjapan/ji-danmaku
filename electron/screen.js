@@ -57,9 +57,9 @@ Write-Output $o
 // file: 弾幕ブレイン（Codex/Claude のビジョン）への入力に使う PNG パス。
 // signature: 32x18 の極小ビットマップ(Buffer)。前サイクルとの差分で「画面が変化したか」を判定し、
 //            無変化ならAI生成をスキップしてコスト(サブスク利用量)を抑えるために使う。
-async function captureScreenshot() {
-  const primary = screen.getPrimaryDisplay();
-  const { width, height } = primary.size;
+async function captureScreenshot(targetDisplay) {
+  const display = targetDisplay || screen.getPrimaryDisplay();
+  const { width, height } = display.size;
   // ビジョン入力には大きすぎない方が速いので長辺 ~1280 に縮小。
   const scale = Math.min(1, 1280 / Math.max(width, height));
   const thumb = {
@@ -71,7 +71,9 @@ async function captureScreenshot() {
     thumbnailSize: thumb
   });
   if (!sources.length) return null;
-  const img = sources[0].thumbnail;
+  // 対象ディスプレイの source を display_id で選ぶ（無ければ先頭）。
+  const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+  const img = src.thumbnail;
   if (img.isEmpty()) return null;
   const file = path.join(TMP, `shot.png`);
   fs.writeFileSync(file, img.toPNG());

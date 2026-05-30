@@ -34,6 +34,12 @@ const DEFAULTS = {
   // 1分あたりのおおよその自動コメント数。
   ambientPerMinute: 40,
 
+  // マルチモニター: true で全ディスプレイに弾幕オーバーレイを表示。false でプライマリのみ。
+  multiMonitor: true,
+  // AIに見せる(キャプチャする)ディスプレイ。screen.getAllDisplays() のインデックス。
+  // null または範囲外でプライマリ。
+  captureDisplayIndex: null,
+
   // オーバーレイ弾幕をキャプチャから除外するか（自分の弾幕がスクショ/署名に写り込むのを防ぐ）。
   // 'auto': Windows 10 build 19041(version 2004)以降でのみ有効化。古いWindows10では
   //         setContentProtection が「真っ黒」描画になりキャプチャを潰すため auto で自動回避。

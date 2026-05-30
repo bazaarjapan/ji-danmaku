@@ -7,7 +7,7 @@ const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
 
-let overlayWin = null;
+let overlayWins = [];         // 各ディスプレイのオーバーレイ（マルチモニター対応）
 let controlWin = null;
 let cfg = configStore.load();
 
@@ -32,11 +32,11 @@ function shouldExcludeFromCapture() {
   return build >= 19041;
 }
 
-function createOverlay() {
-  const primary = screen.getPrimaryDisplay();
-  const { x, y, width, height } = primary.bounds;
+// 1ディスプレイ分のオーバーレイを生成する。
+function createOverlayForDisplay(display) {
+  const { x, y, width, height } = display.bounds;
 
-  overlayWin = new BrowserWindow({
+  const win = new BrowserWindow({
     x, y, width, height,
     frame: false,
     transparent: true,
@@ -54,10 +54,10 @@ function createOverlay() {
     }
   });
 
-  overlayWin.setAlwaysOnTop(true, 'screen-saver');
-  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // クリック透過: 弾幕は完全に「上を流れるだけ」で操作を邪魔しない。
-  overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  win.setIgnoreMouseEvents(true, { forward: true });
   // 自分が流した弾幕を画面キャプチャから除外する（Windows: WDA_EXCLUDEFROMCAPTURE）。
   // これにより (1) アイドル検知の画面署名が自分の弾幕の動きで汚れない、
   //          (2) AIブレインへ渡すスクショに自分の弾幕が写り込まず、実画面だけに反応できる。
@@ -65,13 +65,43 @@ function createOverlay() {
   // ただし Windows 10 build 19041 未満では「除外」ではなく「真っ黒」描画になり、
   // フルスクリーンのオーバーレイだとキャプチャ全体を潰してしまうため自動で無効化する。
   if (shouldExcludeFromCapture()) {
-    overlayWin.setContentProtection(true);
+    win.setContentProtection(true);
   } else {
     console.log('[overlay] content protection をスキップ（古いWindowsビルド）。弾幕がキャプチャに写る可能性があります。');
   }
-  overlayWin.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
+  win.on('closed', () => { overlayWins = overlayWins.filter((w) => w !== win); });
+  return win;
+}
 
-  overlayWin.on('closed', () => { overlayWin = null; });
+function destroyOverlays() {
+  for (const w of overlayWins) { try { if (!w.isDestroyed()) w.destroy(); } catch {} }
+  overlayWins = [];
+}
+
+// multiMonitor=true で全ディスプレイに、false でプライマリのみオーバーレイを生成。
+function createOverlays() {
+  destroyOverlays();
+  const displays = cfg.multiMonitor === false
+    ? [screen.getPrimaryDisplay()]
+    : screen.getAllDisplays();
+  overlayWins = displays.map((d) => createOverlayForDisplay(d));
+  setOverlayStyle();
+}
+
+// ディスプレイ着脱・解像度変更に追従して作り直す（短時間の連続イベントはまとめる）。
+let rebuildTimer = null;
+function scheduleOverlayRebuild() {
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(() => { createOverlays(); }, 400);
+}
+
+// AIに見せる(キャプチャする)ディスプレイ。captureDisplayIndex が範囲内ならそれ、無ければプライマリ。
+function captureTargetDisplay() {
+  const displays = screen.getAllDisplays();
+  const idx = cfg.captureDisplayIndex;
+  if (typeof idx === 'number' && idx >= 0 && idx < displays.length) return displays[idx];
+  return screen.getPrimaryDisplay();
 }
 
 function createControl() {
@@ -158,8 +188,15 @@ function filterNg(comments) {
   return out;
 }
 
+// 全オーバーレイ（各ディスプレイ）へ同じメッセージを配る。
+function broadcastOverlay(channel, payload) {
+  for (const w of overlayWins) {
+    if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+  }
+}
+
 function sendComments(comments, source) {
-  if (!overlayWin || !comments || !comments.length) return;
+  if (!overlayWins.length || !comments || !comments.length) return;
   let list = comments;
   if (source === 'ai') {
     list = dedupeAi(comments);
@@ -168,12 +205,13 @@ function sendComments(comments, source) {
   list = filterNg(list);
   if (!list.length) return;
   if (source !== 'test') list = applyAccents(list);
-  overlayWin.webContents.send('danmaku', { comments: list, source });
+  // 重複抑制・フィルタは1回だけ実行し、同じ弾幕を全モニターに流す。
+  broadcastOverlay('danmaku', { comments: list, source });
 }
 
 function setOverlayStyle() {
-  if (!overlayWin) return;
-  overlayWin.webContents.send('style', {
+  if (!overlayWins.length) return;
+  broadcastOverlay('style', {
     fontSize: cfg.fontSize,
     speedMs: cfg.speedMs,
     opacity: cfg.opacity,
@@ -265,7 +303,7 @@ async function captureCycle() {
     _lastContext = context;
   } catch {}
   try {
-    const shot = await scr.captureScreenshot();
+    const shot = await scr.captureScreenshot(captureTargetDisplay());
     if (shot) { imagePath = shot.file; signature = shot.signature; }
   } catch (e) {
     console.error('[capture] screenshot失敗:', e.message);
@@ -370,9 +408,15 @@ function broadcastRunning() {
 ipcMain.handle('get-config', () => cfg);
 
 ipcMain.handle('set-config', (_e, patch) => {
+  const hadMulti = cfg.multiMonitor;
   cfg = configStore.deepMerge(cfg, patch || {});
   configStore.save(cfg);
-  setOverlayStyle();
+  // マルチモニター設定が変わったらオーバーレイを作り直す（スタイルは生成側で再送）。
+  if (patch && 'multiMonitor' in patch && patch.multiMonitor !== hadMulti) {
+    createOverlays();
+  } else {
+    setOverlayStyle();
+  }
   // 間隔変更を反映
   if (running) {
     clearInterval(captureTimer);
@@ -419,8 +463,13 @@ ipcMain.on('context-cache', (_e, c) => { if (c) _lastContext = c; });
 // ---- アプリライフサイクル ----------------------------------------------
 
 app.whenReady().then(() => {
-  createOverlay();
+  createOverlays();
   createControl();
+
+  // ディスプレイ着脱・解像度/配置変更に追従してオーバーレイを作り直す。
+  screen.on('display-added', scheduleOverlayRebuild);
+  screen.on('display-removed', scheduleOverlayRebuild);
+  screen.on('display-metrics-changed', scheduleOverlayRebuild);
 
   // F8 で配信ON/OFF、F9 でクリック透過の一時解除トグル（デバッグ用）
   globalShortcut.register('F8', () => {
@@ -429,7 +478,7 @@ app.whenReady().then(() => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createOverlay();
+      createOverlays();
       createControl();
     }
   });

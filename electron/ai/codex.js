@@ -16,40 +16,49 @@ const { spawn } = require('child_process');
 
 const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
 
-function buildPrompt({ count, context, transcript, recent }) {
+function buildPrompt({ count, context, transcript, recent, voiceFocus }) {
   const ctxLine = context && (context.title || context.process)
     ? `前面アプリ: ${context.process || ''} / ウィンドウ: ${context.title || ''}`
     : '前面アプリ情報なし';
-  const voiceLine = transcript
-    ? `たった今の配信者の発話(マイク): 「${transcript}」\n  → これを"聞いた"視聴者として直接反応も入れる(同意/ツッコミ/質問への返答/オウム返し/茶化し)`
-    : '発話なし(画面の動きにだけ反応)';
   const avoidLine = recent && recent.length
     ? `直前に流れたコメント(繰り返さず、別の切り口で): ${recent.slice(-12).join(' / ')}`
     : '';
+
+  // 発話あり=「声への反応」を主役に。発話なし=画面に控えめに反応。
+  const focus = (voiceFocus && transcript)
+    ? [
+        `配信者が今こう言いました: 「${transcript}」`,
+        '→ この【発言への反応】を主役にしてください',
+        '   (同意 / ツッコミ / 質問への返答 / オウム返し / 笑い / 共感 / 茶化し)。',
+        '   添付スクショは雰囲気を掴む補助程度でOK。'
+      ]
+    : [
+        '配信者の発話は今ありません。',
+        '添付スクショの画面を見て、画面の"今"に触れるコメントを【控えめに】作ってください',
+        '（出しすぎない・静かめでよい）。'
+      ];
+
   return [
     'あなたはライブ配信を【今まさに見ている大勢の匿名視聴者】です。',
-    'ニコニコ動画のように画面の上を次々流れる短い弾幕コメントを、',
-    'いろんな視聴者がリアルタイムに書き込んでいる体で生成してください。',
-    '添付のスクリーンショットは配信者(PCの持ち主)の"今"の画面です。',
+    'ニコニコ動画のように流れる短い弾幕コメントを、いろんな視聴者がリアルタイムに',
+    '書き込んでいる体で生成してください。',
+    '',
+    ...focus,
     '',
     '出し方:',
     `- ${count}個ちょうど。1個ずつ別人が書いた体で、口調もテンションもバラけさせる`,
     '- 各コメントは日本語で最大20文字程度、口語で短く(ライブチャット感)',
-    '- 反応の種類を混ぜる: ツッコミ / 共感(わかる・それな) / 質問 / 感心(すごい・天才) /',
-    '  実況や先読み / 軽いイジり / ネットスラング(w・草・888・kawaii) / オタ早口',
-    '- 画面の"今"の中身に具体的に触れるコメントを多めに。汎用リアクションは味付け程度',
+    '- 反応の種類を混ぜる: ツッコミ / 共感(わかる・それな) / 質問 / 感心 / 実況 /',
+    '  軽いイジり / ネットスラング(w・草・888・kawaii)',
     '- 同じ語の連発を避け、大勢が見ている多様さを出す',
     '- 煽り/誹謗中傷/不適切表現はNG。明るく楽しいノリ',
-    '- たまに color(例 "#ff5b5b") や big:true で盛り上げる(全体の2割以内)',
-    '- たまに small:true(小さめのボソッとしたツッコミ) や pos:"ue"/"shita"',
-    '  (画面の上/下に数秒固定表示される実況・ツッコミ)も使える(各1割以内)',
+    '- たまに color(例 "#ff5b5b")/big:true/small:true/pos:"ue"・"shita" で変化を付ける(各1割以内)',
     '',
     ctxLine,
-    voiceLine,
     ...(avoidLine ? [avoidLine] : []),
     '',
     'ツールやコマンドは一切使わず、最終メッセージで以下の形の JSON だけを返す:',
-    '{"comments":[{"text":"かわいいw"},{"text":"888","color":"#ffe14d"},{"text":"神","big":true},{"text":"ボソッ","small":true},{"text":"ここ重要","pos":"ue"}]}'
+    '{"comments":[{"text":"わかるw"},{"text":"それなww"},{"text":"888","color":"#ffe14d"},{"text":"ここ好き","pos":"ue"}]}'
   ].join('\n');
 }
 
@@ -231,7 +240,7 @@ function noteFailure(maxFailures, backoffMs) {
 }
 
 // 戻り値: [{ text, style:{color?,big?} }, ...]  失敗/抑制時は null（main側でmockへフォールバック）
-async function generate({ count, context, transcript, imagePath, recent, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
   if (busy) return null;                                   // 多重実行を防止（main 側でもガード済み）
   const now = Date.now();
   if (now < backoffUntil) return null;                     // バックオフ中はスキップ
@@ -239,7 +248,7 @@ async function generate({ count, context, transcript, imagePath, recent, model, 
   busy = true;
   lastGenAt = now;
   try {
-    const promptText = buildPrompt({ count, context, transcript, recent });
+    const promptText = buildPrompt({ count, context, transcript, recent, voiceFocus });
     const text = await server.runTurn({ promptText, imagePath, model, timeoutMs });
     const parsed = extractJson(text || '');
     if (!parsed) {

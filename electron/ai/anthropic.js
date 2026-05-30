@@ -17,7 +17,7 @@ const SYSTEM = [
   'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意),"small":true(任意),"pos":"ue"|"shita"(任意)}]}'
 ].join('');
 
-async function generate({ count, context, transcript, imagePath, recent, model, maxTokens }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, model, maxTokens }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
@@ -31,13 +31,16 @@ async function generate({ count, context, transcript, imagePath, recent, model, 
   }
   const ctx = context && (context.title || context.process)
     ? `前面アプリ:${context.process || ''} ウィンドウ:${context.title || ''}` : '';
-  const voice = transcript ? ` たった今の配信者の発話:「${transcript}」←これにも直接反応` : '';
   const avoid = recent && recent.length
     ? ` 直前に流れたコメント(繰り返さず別の切り口で):${recent.slice(-12).join(' / ')}`
     : '';
+  // 発話あり=声への反応を主役に。発話なし=画面に控えめ。
+  const focus = (voiceFocus && transcript)
+    ? `配信者が今「${transcript}」と言いました。この【発言への反応】(同意/ツッコミ/返答/笑い/共感)を主役に弾幕を${count}個。画面は補助程度。`
+    : `配信者の発話は今ありません。画面の"今"に【控えめに】触れる弾幕を${count}個(出しすぎない)。`;
   content.push({
     type: 'text',
-    text: `たった今のこの画面に、視聴者としてリアルタイムに反応する弾幕を${count}個、JSONで。${ctx}${voice}${avoid}`
+    text: `${focus}${ctx}${avoid} JSONのみで返す。`
   });
 
   try {

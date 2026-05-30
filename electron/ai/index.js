@@ -8,15 +8,15 @@ const anthropic = require('./anthropic');
 const mock = require('./mock');
 
 // AI ブレインで弾幕バッチを生成。常に配列を返す（最悪 mock）。
-async function generateBatch(cfg, { context, transcript, imagePath, recent }) {
-  const count = cfg.commentsPerBatch || 10;
+async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus }) {
+  const n = count || cfg.commentsPerBatch || 10;
   const brain = cfg.brain || 'codex';
 
   let result = null;
   try {
     if (brain === 'codex') {
       result = await codex.generate({
-        count, context, transcript, imagePath, recent,
+        count: n, context, transcript, imagePath, recent, voiceFocus,
         model: cfg.codex && cfg.codex.model,
         timeoutMs: cfg.codex && cfg.codex.timeoutMs,
         minIntervalMs: cfg.codex && cfg.codex.minIntervalMs,
@@ -25,7 +25,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent }) {
       });
     } else if (brain === 'anthropic') {
       result = await anthropic.generate({
-        count, context, transcript, imagePath, recent,
+        count: n, context, transcript, imagePath, recent, voiceFocus,
         model: cfg.anthropic && cfg.anthropic.model,
         maxTokens: cfg.anthropic && cfg.anthropic.maxTokens
       });
@@ -38,7 +38,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent }) {
     return { source: brain, comments: result };
   }
   // フォールバック: 文脈を活かしたアンビエント
-  return { source: 'mock', comments: mock.generate(count, context || {}) };
+  return { source: 'mock', comments: mock.generate(n, context || {}) };
 }
 
 module.exports = { generateBatch, mock };

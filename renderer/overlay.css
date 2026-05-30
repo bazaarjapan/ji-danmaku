@@ -33,8 +33,11 @@ html, body {
   /* JS で transform を制御。transition で滑らかに左へ。 */
 }
 
+/* サイズは overlay.js がインラインで拡大設定する。ここでは強調のグロウだけ足す。 */
 .danmaku.big {
-  font-size: 1.6em;
+  text-shadow:
+    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 12px rgba(255, 220, 80, 0.75);
 }
 
 /* 流入時のふわっと感（最初の数pxだけ） */

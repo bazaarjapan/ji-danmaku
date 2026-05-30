@@ -49,11 +49,15 @@ function pickLane(durationMs, estWidthPx) {
 function spawn(comment) {
   if (onScreen >= style.maxOnScreen) return;
 
+  const big = !!(comment.style && comment.style.big);
+
   const el = document.createElement('div');
-  el.className = 'danmaku' + (comment.style && comment.style.big ? ' big' : '');
+  el.className = 'danmaku' + (big ? ' big' : '');
   el.textContent = comment.text;
 
-  const fs = style.fontSize * (comment.style && comment.style.big ? 1.0 : 1.0);
+  // big は明確に拡大、通常は軽いゆらぎ(0.9〜1.15倍)で奥行き・生き物感を出す。
+  const sizeMul = big ? 1.6 : (0.9 + Math.random() * 0.25);
+  const fs = Math.round(style.fontSize * sizeMul);
   el.style.fontSize = fs + 'px';
   el.style.opacity = String(style.opacity);
   if (comment.style && comment.style.color) el.style.color = comment.style.color;

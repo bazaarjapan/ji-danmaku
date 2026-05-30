@@ -125,6 +125,18 @@ function recentAiTexts(limit = 12) {
   return recentAi.filter((r) => now - r.at < RECENT_AI_TTL).slice(-limit).map((r) => r.text);
 }
 
+// 色未指定の弾幕に、内容キーワード連動のアクセント色を控えめ(約45%)に付与する。
+// 既に色/テスト弾幕は触らない。基本は白多数でうるさくしない。
+function applyAccents(comments) {
+  return comments.map((c) => {
+    const st = c.style || {};
+    if (st.color) return c;
+    const ac = ai.mock.accentColor(c.text);
+    if (ac && Math.random() < 0.45) return { ...c, style: { ...st, color: ac } };
+    return c;
+  });
+}
+
 function sendComments(comments, source) {
   if (!overlayWin || !comments || !comments.length) return;
   let list = comments;
@@ -132,6 +144,7 @@ function sendComments(comments, source) {
     list = dedupeAi(comments);
     if (!list.length) return;
   }
+  if (source !== 'test') list = applyAccents(list);
   overlayWin.webContents.send('danmaku', { comments: list, source });
 }
 

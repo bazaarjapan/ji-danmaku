@@ -48,6 +48,24 @@ function generate(count, context = {}) {
   return out;
 }
 
+// 内容(感情)に応じた控えめなアクセント色。基本は白、ところどころ色づくニコ動風。
+// 一致したら色を返し、しなければ null（=白のまま）。
+const ACCENT = [
+  { re: /(888|８８８|ぱち|拍手|うぽつ|おつ|乙)/, color: '#ffd24d' },                 // 金: 称賛/拍手
+  { re: /(かわいい|かわよ|kawaii|尊い|てえてえ|すこ|すき|♡|❤|💕)/i, color: '#ff8ec7' }, // 桃: かわいい
+  { re: /(神|優勝|最高|天才|すごい|うますぎ|うま[いす]|プロ|ナイス|GJ)/i, color: '#ff5b5b' }, // 赤: 興奮/称賛
+  { re: /(草|ｗｗ|w{2,}|笑|わろ|おもろ|大草原)/i, color: '#7bff7b' },                  // 緑: 笑い
+  { re: /(え[ぇえ]?[!！?？]|まじ|マジ|ファッ|うそ|嘘|[!！]?[?？]{2,}|こわ|やば|ヤバ)/, color: '#5bd1ff' } // 水: 驚き
+];
+
+function accentColor(text) {
+  const s = String(text || '');
+  for (const a of ACCENT) {
+    if (a.re.test(s)) return a.color;
+  }
+  return null;
+}
+
 // たまに色付き・大型コメントを混ぜて画面に変化を出す。
 function rollStyle(text) {
   const r = Math.random();
@@ -59,4 +77,4 @@ function rollStyle(text) {
   return {};
 }
 
-module.exports = { generate };
+module.exports = { generate, accentColor };

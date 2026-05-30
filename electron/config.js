@@ -27,6 +27,19 @@ const DEFAULTS = {
   // 1分あたりのおおよその自動コメント数。
   ambientPerMinute: 40,
 
+  // オーバーレイ弾幕をキャプチャから除外するか（自分の弾幕がスクショ/署名に写り込むのを防ぐ）。
+  // 'auto': Windows 10 build 19041(version 2004)以降でのみ有効化。古いWindows10では
+  //         setContentProtection が「真っ黒」描画になりキャプチャを潰すため auto で自動回避。
+  // true: 常に有効 / false: 常に無効。
+  overlayContentProtection: 'auto',
+
+  // アイドル検知: 画面が変化せず発話も無いときAI生成をスキップしてコストを抑える。
+  idleDetection: true,
+  // 画面署名の平均絶対差がこの値未満なら「変化なし」とみなす(0-255、小さいほど敏感)。
+  idleChangeThreshold: 4,
+  // 「変化なし」がこの回数連続したらAI生成をスキップ(アンビエントは継続)。
+  idleSkipAfter: 1,
+
   // マイク監視: 喋ると弾幕がドッと増える「爽快感」担当。
   micEnabled: true,
   // この音量(0-1)を超えたら「発話」とみなしてリアクションを盛る。

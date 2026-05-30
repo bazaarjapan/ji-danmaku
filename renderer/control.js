@@ -13,6 +13,12 @@ async function init() {
   window.ji.onRunning((r) => setRunning(r));
   window.ji.onStatus((s) => {
     if (s.brain) $('brainBadge').textContent = 'brain: ' + s.brain;
+    // 停止後に届く遅延ステータスでUIを「配信中」に戻さないよう running でガード。
+    if (s.idle !== undefined && running) {
+      $('statusText').textContent = s.idle
+        ? '💤 アイドル（画面変化なし → 生成スキップ中・節約）'
+        : '配信中（弾幕が流れています）';
+    }
     if (s.lastContext) {
       const c = s.lastContext;
       $('ctxInfo').textContent = c.process || c.title

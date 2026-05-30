@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
 const path = require('path');
+const os = require('os');
 const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
@@ -17,6 +18,17 @@ let micState = { level: 0, speaking: false, transcript: '' };
 let lastBatchAt = 0;
 
 // ---- ウィンドウ生成 ----------------------------------------------------
+
+// オーバーレイをキャプチャから除外して良いか判定。
+// 'auto' は WDA_EXCLUDEFROMCAPTURE が正しく効く Windows 10 build 19041(2004) 以降のみ有効化。
+function shouldExcludeFromCapture() {
+  const mode = cfg.overlayContentProtection;
+  if (mode === true) return true;
+  if (mode === false) return false;
+  if (process.platform !== 'win32') return true;  // macOS等は通常どおり除外可
+  const build = parseInt((os.release().split('.')[2] || '0'), 10);
+  return build >= 19041;
+}
 
 function createOverlay() {
   const primary = screen.getPrimaryDisplay();
@@ -44,6 +56,17 @@ function createOverlay() {
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // クリック透過: 弾幕は完全に「上を流れるだけ」で操作を邪魔しない。
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  // 自分が流した弾幕を画面キャプチャから除外する（Windows: WDA_EXCLUDEFROMCAPTURE）。
+  // これにより (1) アイドル検知の画面署名が自分の弾幕の動きで汚れない、
+  //          (2) AIブレインへ渡すスクショに自分の弾幕が写り込まず、実画面だけに反応できる。
+  // ユーザーの目には弾幕は通常どおり表示される（キャプチャ系ツールにのみ非表示）。
+  // ただし Windows 10 build 19041 未満では「除外」ではなく「真っ黒」描画になり、
+  // フルスクリーンのオーバーレイだとキャプチャ全体を潰してしまうため自動で無効化する。
+  if (shouldExcludeFromCapture()) {
+    overlayWin.setContentProtection(true);
+  } else {
+    console.log('[overlay] content protection をスキップ（古いWindowsビルド）。弾幕がキャプチャに写る可能性があります。');
+  }
   overlayWin.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
 
   overlayWin.on('closed', () => { overlayWin = null; });
@@ -107,6 +130,8 @@ function enqueueDrip(comments) {
 // ---- ループ ------------------------------------------------------------
 
 let cycleBusy = false;
+let prevSignature = null;   // 前サイクルの画面署名（アイドル検知用）
+let idleStreak = 0;         // 「変化なし」連続回数
 
 async function captureCycle() {
   if (!running || cycleBusy) return;  // 生成中なら今回の発火はスキップ（プロセス重複防止）
@@ -114,20 +139,44 @@ async function captureCycle() {
   lastBatchAt = Date.now();
   let context = { title: '', process: '' };
   let imagePath = null;
+  let signature = null;
   try {
     context = await scr.getForegroundWindow();
     _lastContext = context;
   } catch {}
   try {
-    imagePath = await scr.captureScreenshot();
+    const shot = await scr.captureScreenshot();
+    if (shot) { imagePath = shot.file; signature = shot.signature; }
   } catch (e) {
     console.error('[capture] screenshot失敗:', e.message);
   }
 
-  const transcript = micState.speaking ? micState.transcript : '';
+  const speaking = micState.speaking;
+
+  // アイドル検知: 画面が変化せず発話も無ければAI生成をスキップしてコストを抑える。
+  if (cfg.idleDetection) {
+    const diff = scr.signatureDiff(prevSignature, signature);
+    const changed = diff >= (cfg.idleChangeThreshold ?? 4);
+    prevSignature = signature || prevSignature;
+    if (!changed && !speaking) {
+      idleStreak++;
+      if (idleStreak >= (cfg.idleSkipAfter ?? 1)) {
+        // 生成はスキップ。アンビエント弾幕は別ループで継続するので「無人」にはならない。
+        if (controlWin) controlWin.webContents.send('status', { idle: true, lastContext: context });
+        cycleBusy = false;
+        return;
+      }
+    } else {
+      idleStreak = 0;  // 変化/発話を検知 → 即再開
+    }
+  }
+
+  const transcript = speaking ? micState.transcript : '';
   try {
     const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath });
-    if (controlWin) controlWin.webContents.send('status', { brain: source, lastContext: context });
+    // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
+    if (!running) return;
+    if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });
     enqueueDrip(comments);
   } finally {
     cycleBusy = false;
@@ -164,6 +213,8 @@ function stopRunning() {
   clearTimeout(ambientTimer); ambientTimer = null;
   clearTimeout(dripTimer); dripTimer = null;
   dripQueue = [];
+  prevSignature = null;
+  idleStreak = 0;
   broadcastRunning();
 }
 

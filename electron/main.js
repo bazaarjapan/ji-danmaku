@@ -138,6 +138,26 @@ function applyAccents(comments) {
   });
 }
 
+// NGワードフィルタ: 不適切語を含む弾幕を除外(drop)または伏字化(mask)。
+// 全弾幕(AI/ambient/voice/test)が通る sendComments で適用し、漏れをなくす。
+function filterNg(comments) {
+  const words = (cfg.ngWords || []).filter(Boolean);
+  if (!words.length) return comments;
+  const mask = cfg.ngMode === 'mask';
+  const out = [];
+  for (const c of comments) {
+    const t = c.text || '';
+    if (!words.some((w) => t.includes(w))) { out.push(c); continue; }
+    if (mask) {
+      let m = t;
+      for (const w of words) m = m.split(w).join('〇'.repeat([...w].length));
+      out.push({ ...c, text: m });
+    }
+    // drop: 何もpushしない（除外）
+  }
+  return out;
+}
+
 function sendComments(comments, source) {
   if (!overlayWin || !comments || !comments.length) return;
   let list = comments;
@@ -145,6 +165,8 @@ function sendComments(comments, source) {
     list = dedupeAi(comments);
     if (!list.length) return;
   }
+  list = filterNg(list);
+  if (!list.length) return;
   if (source !== 'test') list = applyAccents(list);
   overlayWin.webContents.send('danmaku', { comments: list, source });
 }

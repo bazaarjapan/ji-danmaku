@@ -16,13 +16,16 @@ const { spawn } = require('child_process');
 
 const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
 
-function buildPrompt({ count, context, transcript }) {
+function buildPrompt({ count, context, transcript, recent }) {
   const ctxLine = context && (context.title || context.process)
     ? `前面アプリ: ${context.process || ''} / ウィンドウ: ${context.title || ''}`
     : '前面アプリ情報なし';
   const voiceLine = transcript
     ? `たった今の配信者の発話(マイク): 「${transcript}」\n  → これを"聞いた"視聴者として直接反応も入れる(同意/ツッコミ/質問への返答/オウム返し/茶化し)`
     : '発話なし(画面の動きにだけ反応)';
+  const avoidLine = recent && recent.length
+    ? `直前に流れたコメント(繰り返さず、別の切り口で): ${recent.slice(-12).join(' / ')}`
+    : '';
   return [
     'あなたはライブ配信を【今まさに見ている大勢の匿名視聴者】です。',
     'ニコニコ動画のように画面の上を次々流れる短い弾幕コメントを、',
@@ -41,6 +44,7 @@ function buildPrompt({ count, context, transcript }) {
     '',
     ctxLine,
     voiceLine,
+    ...(avoidLine ? [avoidLine] : []),
     '',
     'ツールやコマンドは一切使わず、最終メッセージで以下の形の JSON だけを返す:',
     '{"comments":[{"text":"かわいいw"},{"text":"888","color":"#ffe14d"},{"text":"神","big":true}]}'
@@ -213,11 +217,11 @@ let warned = false;
 let busy = false;  // app-server は1ターンずつ処理
 
 // 戻り値: [{ text, style:{color?,big?} }, ...]  失敗時は null
-async function generate({ count, context, transcript, imagePath, model, timeoutMs }) {
+async function generate({ count, context, transcript, imagePath, recent, model, timeoutMs }) {
   if (busy) return null;          // 多重実行を防止（main 側でもガード済み）
   busy = true;
   try {
-    const promptText = buildPrompt({ count, context, transcript });
+    const promptText = buildPrompt({ count, context, transcript, recent });
     const text = await server.runTurn({ promptText, imagePath, model, timeoutMs });
     const parsed = extractJson(text || '');
     if (!parsed) {

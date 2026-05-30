@@ -15,7 +15,8 @@ let running = false;          // 弾幕配信ON/OFF
 let captureTimer = null;      // AI生成ループ
 let ambientTimer = null;      // アンビエント弾幕ループ
 let micState = { level: 0, speaking: false, transcript: '' };
-let lastBatchAt = 0;
+let lastBatchAt = 0;       // 直近の生成サイクル開始時刻（反応トリガのデバウンス用）
+let lastAiCommentAt = 0;   // 直近にAI弾幕を画面へ流した時刻（アンビエント抑制用）
 
 // ---- ウィンドウ生成 ----------------------------------------------------
 
@@ -75,12 +76,16 @@ function createOverlay() {
 function createControl() {
   controlWin = new BrowserWindow({
     width: 420,
-    height: 600,
+    height: 640,
     title: 'Ji-Danmaku コントロール',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // ローカルWhisper(Worker)が node_modules の WASM ランタイムを fetch で読めるよう
+      // file:// への同一オリジン外アクセスを許可。このウィンドウは自前のローカルHTMLしか
+      // 読み込まない(リモート/未知のコンテンツは一切開かない)ため安全。
+      webSecurity: false
     }
   });
   controlWin.loadFile(path.join(__dirname, '..', 'renderer', 'control.html'));
@@ -107,9 +112,28 @@ function setOverlayStyle() {
 // AI生成バッチを間隔内で少しずつ流す（連続感を出す）。
 let dripQueue = [];
 let dripTimer = null;
+let lastEnqueueAt = 0;   // 直近バッチ到着時刻（生成間隔の実測用）
+let batchInterval = 0;   // 観測した生成間隔(EWMA)
+let dripDeadline = 0;    // 現在のキューを流し切る目標時刻
 
+// AI生成バッチを「一気に出さず」、次のバッチが来るまで持つよう間隔調整して流す。
+// 各tickで「残り時間 ÷ 残り個数」で間隔を決めるため、末尾ほど自然に伸びて“間”が空きにくい。
 function enqueueDrip(comments) {
+  if (!comments || !comments.length) return;
+  const now = Date.now();
+  // 実際の生成間隔を観測(EWMA)。codexの実レイテンシに追従し、流し切る目標時間に使う。
+  if (lastEnqueueAt) {
+    const delta = now - lastEnqueueAt;
+    if (delta > 1000 && delta < 120000) {
+      batchInterval = batchInterval ? Math.round(batchInterval * 0.6 + delta * 0.4) : delta;
+    }
+  }
+  lastEnqueueAt = now;
   dripQueue.push(...comments);
+  // 次バッチが来るまで持たせる目標。観測間隔（なければ生成間隔設定）を基準に少し広め。
+  const window = Math.max(4000, batchInterval || cfg.captureIntervalMs || 15000);
+  dripDeadline = now + window;
+
   if (dripTimer) return;
   const tick = () => {
     if (!running || !dripQueue.length) {
@@ -117,11 +141,21 @@ function enqueueDrip(comments) {
       dripTimer = null;
       return;
     }
-    // 発話中はテンポ良く、通常は穏やかに
-    const burst = micState.speaking ? 3 : 1;
+    const speaking = micState.speaking;
+    // 発話中はテンポ良く複数、通常は1個ずつ。
+    const burst = speaking ? 3 : 1;
     const chunk = dripQueue.splice(0, burst);
     sendComments(chunk, 'ai');
-    const gap = micState.speaking ? 250 : 700 + Math.random() * 600;
+    lastAiCommentAt = Date.now();
+    let gap;
+    if (speaking) {
+      gap = 250;
+    } else {
+      // 残り時間を残り個数で均等割り（0.5〜3秒にクランプ）し、自然なゆらぎを足す。
+      const remain = Math.max(0, dripDeadline - Date.now());
+      const per = remain / Math.max(1, dripQueue.length);
+      gap = Math.min(3000, Math.max(500, per)) * (0.85 + Math.random() * 0.3);
+    }
     dripTimer = setTimeout(tick, gap);
   };
   tick();
@@ -132,6 +166,20 @@ function enqueueDrip(comments) {
 let cycleBusy = false;
 let prevSignature = null;   // 前サイクルの画面署名（アイドル検知用）
 let idleStreak = 0;         // 「変化なし」連続回数
+let reactiveTimer = null;   // 発話/画面変化への即時反応生成のデバウンス
+let reactivePending = false;// 生成中に来た反応要求を、終了後に1回だけ拾う
+
+// 「視聴者が"今の発言/画面"に即反応する」ための生成トリガ。
+// codex は1ターンずつ＆~20秒かかるので、生成中は終了後に1回だけ拾い、
+// アイドル時の単発トリガは直近生成から4秒以内の連打を抑える。
+function triggerReactiveCycle() {
+  if (!running) return;
+  if (cycleBusy) { reactivePending = true; return; }
+  if (reactiveTimer) return;
+  const since = Date.now() - lastBatchAt;
+  const wait = since >= 4000 ? 120 : (4000 - since);
+  reactiveTimer = setTimeout(() => { reactiveTimer = null; captureCycle(); }, wait);
+}
 
 async function captureCycle() {
   if (!running || cycleBusy) return;  // 生成中なら今回の発火はスキップ（プロセス重複防止）
@@ -171,7 +219,11 @@ async function captureCycle() {
     }
   }
 
-  const transcript = speaking ? micState.transcript : '';
+  // Whisperの文字起こしは発話が終わった直後に届くため、speaking=false でも
+  // 直近(25秒以内)の認識結果は文脈として渡す。
+  const fresh = micState.transcript &&
+    (Date.now() - (micState.transcriptAt || 0) < 25000);
+  const transcript = (speaking || fresh) ? micState.transcript : '';
   try {
     const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
@@ -180,17 +232,27 @@ async function captureCycle() {
     enqueueDrip(comments);
   } finally {
     cycleBusy = false;
+    // 生成中に発話/画面変化があったら、続けてもう一度だけ反応する。
+    if (reactivePending && running) { reactivePending = false; triggerReactiveCycle(); }
   }
 }
 
 function ambientTick() {
-  if (!running || !cfg.ambientPerMinute) return;
+  if (!running) return;
   // 1分あたり ambientPerMinute 個 → 平均間隔。発話中は密度UP。
-  const base = 60000 / cfg.ambientPerMinute;
+  const per = cfg.ambientPerMinute || 0;
+  const base = per > 0 ? 60000 / per : 1500;
   const factor = micState.speaking ? 0.4 : 1;
-  const n = micState.speaking ? 2 : 1;
-  const comments = ai.mock.generate(n, lastContext());
-  sendComments(comments, 'ambient');
+  // AI主体: AI弾幕がドリップ中／直近(3秒以内)に流れている間はフィラーを控える。
+  // AIが途切れた“隙間”だけ賑わいを足し、無音を防ぐ。
+  const aiFlowing = dripQueue.length > 0 || (Date.now() - lastAiCommentAt < 3000);
+  // 「フィラーを追加」がON・密度>0・AIの隙間のときだけ賑わいを足す。
+  // OFF時は何も出さず＝AIが生成した弾幕だけが流れる。
+  if (cfg.ambientEnabled && per > 0 && !aiFlowing) {
+    const n = micState.speaking ? 2 : 1;
+    sendComments(ai.mock.generate(n, lastContext()), 'ambient');
+  }
+  // ループは running 中は維持し、チェック/スライダー変更を即反映する。
   ambientTimer = setTimeout(ambientTick, base * factor * (0.6 + Math.random() * 0.8));
 }
 
@@ -212,7 +274,11 @@ function stopRunning() {
   clearInterval(captureTimer); captureTimer = null;
   clearTimeout(ambientTimer); ambientTimer = null;
   clearTimeout(dripTimer); dripTimer = null;
+  clearTimeout(reactiveTimer); reactiveTimer = null;
+  reactivePending = false;
   dripQueue = [];
+  lastEnqueueAt = 0;
+  dripDeadline = 0;
   prevSignature = null;
   idleStreak = 0;
   broadcastRunning();
@@ -251,11 +317,21 @@ ipcMain.handle('test-comment', (_e, text) => {
 
 // コントロール画面(通常ウィンドウ)からマイク状態を受け取る。
 ipcMain.on('mic', (_e, state) => {
+  const prevTranscript = micState.transcript;
   micState = { ...micState, ...state };
-  // 発話の立ち上がりでリアクションを軽く盛る
+  // 新しい文字起こしが届いたら時刻を記録し、視聴者が即その発言に反応するよう生成を促す。
+  if (state.transcript && state.transcript !== prevTranscript) {
+    micState.transcriptAt = Date.now();
+    triggerReactiveCycle();
+  }
+  // 発話の立ち上がり: フィラーONなら軽くざわつかせて即時感を出す。
+  // どちらでも AI 生成は前倒しで促す（AI字幕は常に出す）。
   if (state.justSpoke && running) {
-    const n = 2 + Math.floor(Math.random() * 3);
-    sendComments(ai.mock.generate(n, lastContext()), 'voice');
+    if (cfg.ambientEnabled) {
+      const n = 1 + Math.floor(Math.random() * 2);
+      sendComments(ai.mock.generate(n, lastContext()), 'voice');
+    }
+    triggerReactiveCycle();
   }
 });
 

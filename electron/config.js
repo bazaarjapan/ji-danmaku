@@ -23,6 +23,9 @@ const DEFAULTS = {
   // 1回の生成で受け取る弾幕の最大数。
   commentsPerBatch: 10,
 
+  // フィラー弾幕(アンビエント/発話ざわめき)を追加するか。
+  // false にすると AI が生成した弾幕だけを流す（www/草/888 等の自動フィラーは出さない）。
+  ambientEnabled: true,
   // アンビエント(自動)弾幕: AI が無くても常に賑わいを出す。0で無効。
   // 1分あたりのおおよその自動コメント数。
   ambientPerMinute: 40,
@@ -44,6 +47,13 @@ const DEFAULTS = {
   micEnabled: true,
   // この音量(0-1)を超えたら「発話」とみなしてリアクションを盛る。
   micThreshold: 0.12,
+
+  // 音声認識(ローカルWhisper): 発話"内容"を文字起こしし、AIブレインに渡して反応させる。
+  // Transformers.js + onnxruntime-web(WASM)でこのPC上のCPUだけで動く。追加課金なし。
+  // 初回のみモデルをDL(baseで約150MB)→以降はキャッシュからオフライン動作。
+  sttEnabled: true,
+  // Whisperモデル: tiny=最速/粗い, base=標準(推奨), small=高精度/重い。
+  whisperModel: 'Xenova/whisper-base',
 
   // 弾幕の見た目
   fontSize: 30,           // 基準フォントサイズ(px)

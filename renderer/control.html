@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="control.css" />
+  <title>Ji-Danmaku コントロール</title>
+</head>
+<body>
+  <header>
+    <h1>🎏 Ji-Danmaku</h1>
+    <p class="sub">画面とマイクを監視して、ニコニコ風の弾幕を流します</p>
+  </header>
+
+  <section class="main-toggle">
+    <button id="toggle" class="big-btn off">▶ 配信スタート <span class="hot">(F8)</span></button>
+    <div class="status">
+      <span id="dot" class="dot"></span>
+      <span id="statusText">停止中</span>
+      <span id="brainBadge" class="badge">brain: -</span>
+    </div>
+  </section>
+
+  <section class="mic">
+    <div class="row">
+      <label><input type="checkbox" id="micEnabled" /> マイク監視（喋ると弾幕が増える）</label>
+    </div>
+    <div class="vu"><div id="vuBar"></div></div>
+    <div id="micInfo" class="hint">マイク未開始</div>
+  </section>
+
+  <section class="settings">
+    <h2>設定</h2>
+
+    <label class="field">
+      ブレイン
+      <select id="brain">
+        <option value="codex">Codex（画面を見て生成・推奨）</option>
+        <option value="anthropic">Claude (ANTHROPIC_API_KEY)</option>
+        <option value="mock">アンビエントのみ（AI不要）</option>
+      </select>
+    </label>
+
+    <label class="field">
+      生成間隔: <span id="capLabel"></span>
+      <input type="range" id="captureIntervalMs" min="4000" max="20000" step="1000" />
+    </label>
+
+    <label class="field">
+      アンビエント密度(/分): <span id="ambLabel"></span>
+      <input type="range" id="ambientPerMinute" min="0" max="120" step="5" />
+    </label>
+
+    <label class="field">
+      流れる速さ: <span id="spdLabel"></span>
+      <input type="range" id="speedMs" min="4000" max="14000" step="500" />
+    </label>
+
+    <label class="field">
+      文字サイズ: <span id="fsLabel"></span>
+      <input type="range" id="fontSize" min="16" max="56" step="2" />
+    </label>
+
+    <label class="field">
+      不透明度: <span id="opLabel"></span>
+      <input type="range" id="opacity" min="0.3" max="1" step="0.02" />
+    </label>
+  </section>
+
+  <section class="test">
+    <input type="text" id="testText" placeholder="テスト弾幕を入力…" />
+    <button id="testBtn">流す</button>
+  </section>
+
+  <footer>
+    <p id="ctxInfo" class="hint"></p>
+    <p class="hint">F8: 配信ON/OFF ／ 弾幕はクリック透過で操作の邪魔をしません</p>
+  </footer>
+
+  <script src="control.js"></script>
+</body>
+</html>

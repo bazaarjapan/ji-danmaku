@@ -1,0 +1,55 @@
+:root {
+  --bg: #14161c;
+  --panel: #1d2029;
+  --ink: #e8eaf0;
+  --sub: #9aa0b0;
+  --accent: #ff6b9d;
+  --accent2: #5bd1ff;
+  --ok: #5bff9d;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 16px 18px 22px;
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+header h1 { margin: 0; font-size: 22px; }
+.sub { margin: 2px 0 14px; color: var(--sub); font-size: 12px; }
+
+section { background: var(--panel); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+h2 { margin: 0 0 10px; font-size: 14px; color: var(--sub); font-weight: 600; }
+
+.big-btn {
+  width: 100%; padding: 14px; border: none; border-radius: 10px;
+  font-size: 18px; font-weight: 700; color: #fff; cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), #ff8e53);
+  transition: transform .08s ease, filter .2s;
+}
+.big-btn:active { transform: scale(0.98); }
+.big-btn.on { background: linear-gradient(135deg, #ff4d4d, #c0392b); }
+.big-btn .hot { font-size: 12px; opacity: .8; }
+
+.status { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
+.dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.badge { margin-left: auto; font-size: 11px; color: var(--sub); background: #11131a; padding: 3px 8px; border-radius: 999px; }
+
+.vu { height: 10px; background: #11131a; border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
+#vuBar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--ok), #ffe14d, #ff4d4d); transition: width .05s linear; }
+
+.field { display: block; margin-bottom: 12px; font-size: 12px; color: var(--sub); }
+.field input[type=range] { width: 100%; margin-top: 6px; accent-color: var(--accent); }
+.field select { width: 100%; margin-top: 6px; padding: 7px; border-radius: 8px; background: #11131a; color: var(--ink); border: 1px solid #2a2e3a; }
+.field span { color: var(--ink); font-weight: 600; }
+
+.row label { font-size: 13px; }
+
+.test { display: flex; gap: 8px; }
+.test input { flex: 1; padding: 9px; border-radius: 8px; background: #11131a; color: var(--ink); border: 1px solid #2a2e3a; }
+.test button { padding: 9px 14px; border: none; border-radius: 8px; background: var(--accent2); color: #06222e; font-weight: 700; cursor: pointer; }
+
+.hint { color: var(--sub); font-size: 11px; margin: 4px 0; }
+footer { margin-top: 4px; }

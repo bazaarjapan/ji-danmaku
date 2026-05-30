@@ -18,6 +18,9 @@
       <span id="statusText">停止中</span>
       <span id="brainBadge" class="badge">brain: -</span>
     </div>
+    <div class="row">
+      <label><input type="checkbox" id="ambientEnabled" /> フィラー弾幕を追加（OFFでAI生成の字幕のみ）</label>
+    </div>
   </section>
 
   <section class="mic">
@@ -26,6 +29,18 @@
     </div>
     <div class="vu"><div id="vuBar"></div></div>
     <div id="micInfo" class="hint">マイク未開始</div>
+    <div class="row">
+      <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こししてAIに渡す（ローカルWhisper・無料）</label>
+    </div>
+    <label class="field">
+      Whisperモデル
+      <select id="whisperModel">
+        <option value="Xenova/whisper-tiny">tiny（最速・粗い）</option>
+        <option value="Xenova/whisper-base">base（標準・推奨）</option>
+        <option value="Xenova/whisper-small">small（高精度・重い）</option>
+      </select>
+    </label>
+    <div id="sttInfo" class="hint"></div>
   </section>
 
   <section class="settings">

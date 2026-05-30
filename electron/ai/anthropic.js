@@ -6,11 +6,13 @@
 const fs = require('fs');
 
 const SYSTEM = [
-  'あなたはニコニコ動画/ライブ配信の視聴者です。',
-  '与えられた画面のスクリーンショットに対し、リアルタイムに流れる',
-  '短い視聴者コメント(弾幕)を生成します。各コメントは日本語で最大20文字、',
-  'ネットスラング(w, 草, 888, kawaii 等)や実況の相づちを混ぜ、明るく楽しく。',
-  '誹謗中傷や不適切表現は避ける。',
+  'あなたはライブ配信を今まさに見ている大勢の匿名視聴者です。',
+  'ニコニコ動画のように画面を流れる短い弾幕を、いろんな視聴者がリアルタイムに',
+  '書き込む体で生成します。各コメントは日本語で最大20文字、口語で短く。',
+  '反応の種類(ツッコミ/共感/質問/感心/実況/軽いイジり/スラングw,草,888)を混ぜ、',
+  '同じ語の連発を避け多様に。画面の"今"の中身に具体的に触れるものを多めに。',
+  '配信者の発話があれば直接反応(同意/返答/オウム返し/茶化し)も入れる。',
+  '誹謗中傷や不適切表現は避け明るく楽しく。',
   'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意)}]}'
 ].join('');
 
@@ -28,10 +30,10 @@ async function generate({ count, context, transcript, imagePath, model, maxToken
   }
   const ctx = context && (context.title || context.process)
     ? `前面アプリ:${context.process || ''} ウィンドウ:${context.title || ''}` : '';
-  const voice = transcript ? ` 配信者の発話:「${transcript}」` : '';
+  const voice = transcript ? ` たった今の配信者の発話:「${transcript}」←これにも直接反応` : '';
   content.push({
     type: 'text',
-    text: `この画面に反応する弾幕を${count}個、JSONで。${ctx}${voice}`
+    text: `たった今のこの画面に、視聴者としてリアルタイムに反応する弾幕を${count}個、JSONで。${ctx}${voice}`
   });
 
   try {

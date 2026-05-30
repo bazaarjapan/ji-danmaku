@@ -31,7 +31,11 @@ async function init() {
 
 function reflectConfig() {
   $('brain').value = cfg.brain;
+  $('ambientEnabled').checked = cfg.ambientEnabled !== false;
+  $('ambientPerMinute').disabled = cfg.ambientEnabled === false;
   $('micEnabled').checked = !!cfg.micEnabled;
+  $('sttEnabled').checked = !!cfg.sttEnabled;
+  $('whisperModel').value = cfg.whisperModel;
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
   setSlider('ambientPerMinute', cfg.ambientPerMinute, (v) => v + '個', 'ambLabel');
   setSlider('speedMs', cfg.speedMs, (v) => (v / 1000).toFixed(1) + '秒', 'spdLabel');
@@ -61,9 +65,24 @@ function bindControls() {
   });
 
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
+  $('ambientEnabled').addEventListener('change', () => {
+    const on = $('ambientEnabled').checked;
+    patch({ ambientEnabled: on });
+    $('ambientPerMinute').disabled = !on;  // OFF時は密度スライダーを無効化
+  });
   $('micEnabled').addEventListener('change', () => {
     patch({ micEnabled: $('micEnabled').checked });
     if ($('micEnabled').checked) startMic(); else stopMic();
+  });
+  $('sttEnabled').addEventListener('change', () => {
+    cfg.sttEnabled = $('sttEnabled').checked;
+    patch({ sttEnabled: cfg.sttEnabled });
+    if (cfg.sttEnabled) { if (micStream) startStt(); } else stopStt();
+  });
+  $('whisperModel').addEventListener('change', () => {
+    cfg.whisperModel = $('whisperModel').value;
+    patch({ whisperModel: cfg.whisperModel });
+    restartStt();
   });
 
   for (const id of ['captureIntervalMs', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
@@ -102,8 +121,15 @@ function setRunning(r) {
 
 // ---- マイク監視 --------------------------------------------------------
 
-let audioCtx = null, analyser = null, micStream = null, micRAF = null;
-let recog = null, lastTranscript = '', speaking = false, speakDecay = 0;
+let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null;
+let lastTranscript = '', speaking = false, speakDecay = 0;
+
+// 音声認識(ローカルWhisper)は 16kHz mono で扱う。
+const SR_HZ = 16000;
+const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ
+const STT_MIN_SAMPLES = SR_HZ * 0.5;     // 0.5秒未満の発話は無視
+const STT_MAX_SAMPLES = SR_HZ * 12;      // 12秒で強制的に区切る
+const STT_SILENCE_CHUNKS = 3;            // 約0.77秒の無音で発話終了とみなす
 
 async function startMic() {
   if (micStream) return;
@@ -113,7 +139,8 @@ async function startMic() {
     $('micInfo').textContent = 'マイク取得失敗: ' + e.message;
     return;
   }
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Whisper入力に合わせて 16kHz で取り込む（ブラウザ側が自動リサンプル）。
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SR_HZ });
   const src = audioCtx.createMediaStreamSource(micStream);
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
@@ -142,49 +169,121 @@ async function startMic() {
   loop();
   $('micInfo').textContent = '🎤 マイク監視中';
 
-  startRecognition(); // 任意（環境により無効）
+  // 生PCMを拾って発話の切れ目でWhisperに渡す。
+  scriptNode = audioCtx.createScriptProcessor(STT_CHUNK, 1, 1);
+  scriptNode.onaudioprocess = onAudioFrame;
+  src.connect(scriptNode);
+  scriptNode.connect(audioCtx.destination); // 発火のため接続（出力は無音）
+
+  if (cfg.sttEnabled) startStt();
 }
 
 function stopMic() {
   if (micRAF) cancelAnimationFrame(micRAF);
   micRAF = null;
+  if (scriptNode) { try { scriptNode.disconnect(); } catch {} scriptNode.onaudioprocess = null; scriptNode = null; }
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   micStream = null;
   if (audioCtx) audioCtx.close();
   audioCtx = null;
   $('vuBar').style.width = '0%';
   $('micInfo').textContent = 'マイク停止';
-  stopRecognition();
+  stopStt();
 }
 
-// Web Speech API（Chromium）。使えない環境では静かに無効化。
-function startRecognition() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return;
+// ---- ローカルWhisper (Web Worker) --------------------------------------
+
+let sttWorker = null, sttReady = false, sttBusy = false;
+// VAD用の収集バッファ
+let utterChunks = [], utterLen = 0, silentChunks = 0;
+
+function startStt() {
+  if (sttWorker) return;
+  sttReady = false; sttBusy = false;
+  utterChunks = []; utterLen = 0; silentChunks = 0;
   try {
-    recog = new SR();
-    recog.lang = 'ja-JP';
-    recog.continuous = true;
-    recog.interimResults = true;
-    recog.onresult = (ev) => {
-      let t = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        t += ev.results[i][0].transcript;
+    sttWorker = new Worker('whisper-worker.js', { type: 'module' });
+  } catch (e) {
+    $('sttInfo').textContent = 'Whisper起動失敗: ' + e.message;
+    sttWorker = null;
+    return;
+  }
+  sttWorker.onmessage = (ev) => {
+    const m = ev.data || {};
+    if (m.type === 'progress') {
+      if (m.status === 'progress' && typeof m.progress === 'number') {
+        $('sttInfo').textContent = `WhisperモデルDL中… ${Math.round(m.progress)}%`;
       }
-      lastTranscript = t.trim().slice(-60);
-    };
-    recog.onerror = () => {};
-    recog.onend = () => { if (micStream) { try { recog.start(); } catch {} } };
-    recog.start();
-    $('micInfo').textContent = '🎤 マイク監視中（音声認識ON）';
-  } catch {
-    recog = null;
+    } else if (m.type === 'ready') {
+      sttReady = true;
+      $('sttInfo').textContent = `🧠 Whisper準備OK（${m.device || 'wasm'}・発話を文字起こし中）`;
+    } else if (m.type === 'result') {
+      sttBusy = false;
+      if (m.text) {
+        lastTranscript = m.text.slice(-60);
+        $('sttInfo').textContent = '認識: ' + lastTranscript;
+      }
+    } else if (m.type === 'skipped') {
+      sttBusy = false;
+    } else if (m.type === 'error') {
+      sttBusy = false;
+      $('sttInfo').textContent = 'Whisperエラー: ' + (m.message || '').slice(0, 80);
+    }
+  };
+  sttWorker.onerror = (e) => { $('sttInfo').textContent = 'Whisperエラー: ' + e.message; };
+  sttWorker.postMessage({ type: 'load', model: cfg.whisperModel });
+  $('sttInfo').textContent = 'Whisperモデル読込中…（初回はDL）';
+}
+
+function stopStt() {
+  if (sttWorker) { try { sttWorker.terminate(); } catch {} sttWorker = null; }
+  sttReady = false; sttBusy = false;
+  utterChunks = []; utterLen = 0; silentChunks = 0;
+  lastTranscript = '';
+  $('sttInfo').textContent = '';
+}
+
+// 設定変更でモデルを切り替えるときの再起動。
+function restartStt() {
+  if (!micStream) return;        // マイク停止中なら次回startMicで反映
+  stopStt();
+  if (cfg.sttEnabled) startStt();
+}
+
+// ScriptProcessor から呼ばれる: 発話を貯めて、切れ目でWhisperへ。
+function onAudioFrame(e) {
+  if (!sttWorker) return;
+  const input = e.inputBuffer.getChannelData(0);
+  let sum = 0;
+  for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+  const level = Math.min(1, Math.sqrt(sum / input.length) * 3.2);
+  const active = level > (cfg.micThreshold || 0.12);
+
+  if (active) {
+    utterChunks.push(new Float32Array(input)); // inputBufferは再利用されるのでコピー
+    utterLen += input.length;
+    silentChunks = 0;
+  } else if (utterLen > 0) {
+    utterChunks.push(new Float32Array(input)); // 語尾を切らないよう無音も少し含める
+    utterLen += input.length;
+    silentChunks++;
+  }
+
+  if (utterLen >= STT_MAX_SAMPLES || (silentChunks >= STT_SILENCE_CHUNKS && utterLen > 0)) {
+    flushUtterance();
   }
 }
 
-function stopRecognition() {
-  if (recog) { try { recog.stop(); } catch {} recog = null; }
-  lastTranscript = '';
+function flushUtterance() {
+  const chunks = utterChunks, total = utterLen;
+  utterChunks = []; utterLen = 0; silentChunks = 0;
+  if (total < STT_MIN_SAMPLES) return;        // 短すぎ → 破棄
+  if (!sttReady || sttBusy) return;           // モデル未準備/処理中 → 今回は捨てて溜めない
+  const audio = new Float32Array(total);
+  let off = 0;
+  for (const c of chunks) { audio.set(c, off); off += c.length; }
+  sttBusy = true;
+  sttWorker.postMessage({ type: 'transcribe', model: cfg.whisperModel, audio }, [audio.buffer]);
 }
 
 init();

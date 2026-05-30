@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
 const path = require('path');
+const os = require('os');
 const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
@@ -17,6 +18,17 @@ let micState = { level: 0, speaking: false, transcript: '' };
 let lastBatchAt = 0;
 
 // ---- ウィンドウ生成 ----------------------------------------------------
+
+// オーバーレイをキャプチャから除外して良いか判定。
+// 'auto' は WDA_EXCLUDEFROMCAPTURE が正しく効く Windows 10 build 19041(2004) 以降のみ有効化。
+function shouldExcludeFromCapture() {
+  const mode = cfg.overlayContentProtection;
+  if (mode === true) return true;
+  if (mode === false) return false;
+  if (process.platform !== 'win32') return true;  // macOS等は通常どおり除外可
+  const build = parseInt((os.release().split('.')[2] || '0'), 10);
+  return build >= 19041;
+}
 
 function createOverlay() {
   const primary = screen.getPrimaryDisplay();
@@ -48,7 +60,13 @@ function createOverlay() {
   // これにより (1) アイドル検知の画面署名が自分の弾幕の動きで汚れない、
   //          (2) AIブレインへ渡すスクショに自分の弾幕が写り込まず、実画面だけに反応できる。
   // ユーザーの目には弾幕は通常どおり表示される（キャプチャ系ツールにのみ非表示）。
-  overlayWin.setContentProtection(true);
+  // ただし Windows 10 build 19041 未満では「除外」ではなく「真っ黒」描画になり、
+  // フルスクリーンのオーバーレイだとキャプチャ全体を潰してしまうため自動で無効化する。
+  if (shouldExcludeFromCapture()) {
+    overlayWin.setContentProtection(true);
+  } else {
+    console.log('[overlay] content protection をスキップ（古いWindowsビルド）。弾幕がキャプチャに写る可能性があります。');
+  }
   overlayWin.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
 
   overlayWin.on('closed', () => { overlayWin = null; });

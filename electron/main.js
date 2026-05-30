@@ -338,7 +338,10 @@ async function captureCycle() {
   const transcript = (speaking || fresh) ? (thread.join(' / ') || micState.transcript) : '';
   try {
     const recent = recentAiTexts();
-    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath, recent });
+    // 発話があれば「声への反応」を主役に通常本数で、無ければ画面のみ控えめ本数で生成。
+    const voiceFocus = !!transcript;
+    const count = voiceFocus ? (cfg.commentsPerBatch || 10) : (cfg.commentsPerBatchScreen ?? 4);
+    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (!running) return;
     if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });

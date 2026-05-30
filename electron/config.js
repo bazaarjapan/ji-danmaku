@@ -68,8 +68,9 @@ const DEFAULTS = {
   // Transformers.js + onnxruntime-web(WASM)でこのPC上のCPUだけで動く。追加課金なし。
   // 初回のみモデルをDL(baseで約150MB)→以降はキャッシュからオフライン動作。
   sttEnabled: true,
-  // Whisperモデル: tiny=最速/粗い, base=標準(推奨), small=高精度/重い。
-  whisperModel: 'Xenova/whisper-base',
+  // Whisperモデル: tiny=最速/粗い, base=軽い, small=精度と速度のバランス(推奨),
+  // medium=高精度だが重い(WebGPU推奨)。日本語は base だと弱いので既定は small。
+  whisperModel: 'Xenova/whisper-small',
 
   // 弾幕の見た目
   fontSize: 30,           // 基準フォントサイズ(px)

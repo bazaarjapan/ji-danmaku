@@ -127,10 +127,11 @@ let lastTranscript = '', speaking = false, speakDecay = 0;
 
 // 音声認識(ローカルWhisper)は 16kHz mono で扱う。
 const SR_HZ = 16000;
-const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ
-const STT_MIN_SAMPLES = SR_HZ * 0.5;     // 0.5秒未満の発話は無視
+const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ(約0.256s)
+const STT_MIN_SAMPLES = SR_HZ * 0.8;     // 0.8秒未満の発話は誤認識の元なので無視
 const STT_MAX_SAMPLES = SR_HZ * 12;      // 12秒で強制的に区切る
 const STT_SILENCE_CHUNKS = 3;            // 約0.77秒の無音で発話終了とみなす
+const STT_PREROLL_CHUNKS = 2;            // 発話の頭欠けを防ぐため直前(約0.5s)を含める
 
 async function startMic() {
   if (micStream) return;
@@ -197,11 +198,12 @@ function stopMic() {
 let sttWorker = null, sttReady = false, sttBusy = false;
 // VAD用の収集バッファ
 let utterChunks = [], utterLen = 0, silentChunks = 0;
+let preRoll = [];   // 無音中の直前チャンク（発話の頭を取りこぼさない）
 
 function startStt() {
   if (sttWorker) return;
   sttReady = false; sttBusy = false;
-  utterChunks = []; utterLen = 0; silentChunks = 0;
+  utterChunks = []; utterLen = 0; silentChunks = 0; preRoll = [];
   try {
     sttWorker = new Worker('whisper-worker.js', { type: 'module' });
   } catch (e) {
@@ -221,7 +223,7 @@ function startStt() {
     } else if (m.type === 'result') {
       sttBusy = false;
       if (m.text) {
-        lastTranscript = m.text.slice(-60);
+        lastTranscript = m.text.slice(-120);
         $('sttInfo').textContent = '認識: ' + lastTranscript;
       }
     } else if (m.type === 'skipped') {
@@ -240,6 +242,7 @@ function stopStt() {
   if (sttWorker) { try { sttWorker.terminate(); } catch {} sttWorker = null; }
   sttReady = false; sttBusy = false;
   utterChunks = []; utterLen = 0; silentChunks = 0;
+  preRoll = [];
   lastTranscript = '';
   $('sttInfo').textContent = '';
 }
@@ -261,6 +264,11 @@ function onAudioFrame(e) {
   const active = level > (cfg.micThreshold || 0.12);
 
   if (active) {
+    // 発話の立ち上がりでプリロール(直前の無音)を頭に足し、最初の音の欠けを防ぐ。
+    if (utterLen === 0 && preRoll.length) {
+      for (const c of preRoll) { utterChunks.push(c); utterLen += c.length; }
+      preRoll = [];
+    }
     utterChunks.push(new Float32Array(input)); // inputBufferは再利用されるのでコピー
     utterLen += input.length;
     silentChunks = 0;
@@ -268,6 +276,10 @@ function onAudioFrame(e) {
     utterChunks.push(new Float32Array(input)); // 語尾を切らないよう無音も少し含める
     utterLen += input.length;
     silentChunks++;
+  } else {
+    // 無音中: プリロールをローリング更新（直近 STT_PREROLL_CHUNKS 個を保持）。
+    preRoll.push(new Float32Array(input));
+    if (preRoll.length > STT_PREROLL_CHUNKS) preRoll.shift();
   }
 
   if (utterLen >= STT_MAX_SAMPLES || (silentChunks >= STT_SILENCE_CHUNKS && utterLen > 0)) {

@@ -53,8 +53,10 @@ Write-Output $o
   });
 }
 
-// プライマリ画面のスクリーンショットを撮り PNG ファイルに保存してパスを返す。
-// 弾幕ブレイン（Codex/Claude のビジョン）への入力に使う。
+// プライマリ画面のスクリーンショットを撮り PNG 保存して { file, signature } を返す。
+// file: 弾幕ブレイン（Codex/Claude のビジョン）への入力に使う PNG パス。
+// signature: 32x18 の極小ビットマップ(Buffer)。前サイクルとの差分で「画面が変化したか」を判定し、
+//            無変化ならAI生成をスキップしてコスト(サブスク利用量)を抑えるために使う。
 async function captureScreenshot() {
   const primary = screen.getPrimaryDisplay();
   const { width, height } = primary.size;
@@ -73,7 +75,20 @@ async function captureScreenshot() {
   if (img.isEmpty()) return null;
   const file = path.join(TMP, `shot.png`);
   fs.writeFileSync(file, img.toPNG());
-  return file;
+
+  let signature = null;
+  try {
+    signature = img.resize({ width: 32, height: 18, quality: 'good' }).toBitmap();
+  } catch {}
+  return { file, signature };
 }
 
-module.exports = { getForegroundWindow, captureScreenshot, TMP };
+// 2つの署名(BGRAビットマップ)の平均絶対差を返す(0-255)。大きいほど画面が変化。
+function signatureDiff(a, b) {
+  if (!a || !b || a.length !== b.length || a.length === 0) return Infinity;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+}
+
+module.exports = { getForegroundWindow, captureScreenshot, signatureDiff, TMP };

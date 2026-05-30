@@ -107,6 +107,8 @@ function enqueueDrip(comments) {
 // ---- ループ ------------------------------------------------------------
 
 let cycleBusy = false;
+let prevSignature = null;   // 前サイクルの画面署名（アイドル検知用）
+let idleStreak = 0;         // 「変化なし」連続回数
 
 async function captureCycle() {
   if (!running || cycleBusy) return;  // 生成中なら今回の発火はスキップ（プロセス重複防止）
@@ -114,20 +116,42 @@ async function captureCycle() {
   lastBatchAt = Date.now();
   let context = { title: '', process: '' };
   let imagePath = null;
+  let signature = null;
   try {
     context = await scr.getForegroundWindow();
     _lastContext = context;
   } catch {}
   try {
-    imagePath = await scr.captureScreenshot();
+    const shot = await scr.captureScreenshot();
+    if (shot) { imagePath = shot.file; signature = shot.signature; }
   } catch (e) {
     console.error('[capture] screenshot失敗:', e.message);
   }
 
-  const transcript = micState.speaking ? micState.transcript : '';
+  const speaking = micState.speaking;
+
+  // アイドル検知: 画面が変化せず発話も無ければAI生成をスキップしてコストを抑える。
+  if (cfg.idleDetection) {
+    const diff = scr.signatureDiff(prevSignature, signature);
+    const changed = diff >= (cfg.idleChangeThreshold ?? 4);
+    prevSignature = signature || prevSignature;
+    if (!changed && !speaking) {
+      idleStreak++;
+      if (idleStreak >= (cfg.idleSkipAfter ?? 1)) {
+        // 生成はスキップ。アンビエント弾幕は別ループで継続するので「無人」にはならない。
+        if (controlWin) controlWin.webContents.send('status', { idle: true, lastContext: context });
+        cycleBusy = false;
+        return;
+      }
+    } else {
+      idleStreak = 0;  // 変化/発話を検知 → 即再開
+    }
+  }
+
+  const transcript = speaking ? micState.transcript : '';
   try {
     const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath });
-    if (controlWin) controlWin.webContents.send('status', { brain: source, lastContext: context });
+    if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });
     enqueueDrip(comments);
   } finally {
     cycleBusy = false;
@@ -164,6 +188,8 @@ function stopRunning() {
   clearTimeout(ambientTimer); ambientTimer = null;
   clearTimeout(dripTimer); dripTimer = null;
   dripQueue = [];
+  prevSignature = null;
+  idleStreak = 0;
   broadcastRunning();
 }
 

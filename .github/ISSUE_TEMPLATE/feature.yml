@@ -1,0 +1,33 @@
+name: "✨ 機能・改善 (Feature / Enhancement)"
+description: "新機能や既存機能の改善を提案する"
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何を実現したいか1〜2行で
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 背景・動機
+      description: なぜ必要か。どんな体験が良くなるか。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受け入れ条件 (Acceptance Criteria)
+      description: 完了とみなす条件をチェックリストで
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 実装メモ / 影響範囲
+      description: 触りそうなファイル、技術的な注意点など（任意）

@@ -1,0 +1,32 @@
+name: "🐛 バグ報告 (Bug Report)"
+description: "不具合を報告する"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 現象
+      description: 何が起きるか
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: 期待する挙動
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 環境
+      description: OS / Node / Electron / Codex バージョンなど

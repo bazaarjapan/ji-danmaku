@@ -257,20 +257,18 @@ function enqueueDrip(comments) {
       return;
     }
     const speaking = micState.speaking;
-    // 発話中はテンポ良く複数、通常は1個ずつ。
-    const burst = speaking ? 3 : 1;
+    // 基本は1個ずつ。行列が溜まりすぎた時だけ2個まとめて掃く(オーバーフロー防止)。
+    const burst = dripQueue.length > 14 ? 2 : 1;
     const chunk = dripQueue.splice(0, burst);
     sendComments(chunk, 'ai');
     lastAiCommentAt = Date.now();
-    let gap;
-    if (speaking) {
-      gap = 250;
-    } else {
-      // 残り時間を残り個数で均等割り（0.5〜3秒にクランプ）し、自然なゆらぎを足す。
-      const remain = Math.max(0, dripDeadline - Date.now());
-      const per = remain / Math.max(1, dripQueue.length);
-      gap = Math.min(3000, Math.max(500, per)) * (0.85 + Math.random() * 0.3);
-    }
+    // 「残り時間 ÷ 残り個数」で常に均等配分し、生成タイミングでの一気流れを無くす。
+    // 発話中はテンポを少し上げる（下限/上限を短めに）。自然なゆらぎも足す。
+    const remain = Math.max(0, dripDeadline - Date.now());
+    const per = remain / Math.max(1, dripQueue.length);
+    const minGap = speaking ? 450 : 700;
+    const maxGap = speaking ? 1600 : 2800;
+    const gap = Math.min(maxGap, Math.max(minGap, per)) * (0.9 + Math.random() * 0.2);
     dripTimer = setTimeout(tick, gap);
   };
   tick();

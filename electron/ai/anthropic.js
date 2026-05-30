@@ -16,7 +16,7 @@ const SYSTEM = [
   'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意)}]}'
 ].join('');
 
-async function generate({ count, context, transcript, imagePath, model, maxTokens }) {
+async function generate({ count, context, transcript, imagePath, recent, model, maxTokens }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
@@ -31,9 +31,12 @@ async function generate({ count, context, transcript, imagePath, model, maxToken
   const ctx = context && (context.title || context.process)
     ? `前面アプリ:${context.process || ''} ウィンドウ:${context.title || ''}` : '';
   const voice = transcript ? ` たった今の配信者の発話:「${transcript}」←これにも直接反応` : '';
+  const avoid = recent && recent.length
+    ? ` 直前に流れたコメント(繰り返さず別の切り口で):${recent.slice(-12).join(' / ')}`
+    : '';
   content.push({
     type: 'text',
-    text: `たった今のこの画面に、視聴者としてリアルタイムに反応する弾幕を${count}個、JSONで。${ctx}${voice}`
+    text: `たった今のこの画面に、視聴者としてリアルタイムに反応する弾幕を${count}個、JSONで。${ctx}${voice}${avoid}`
   });
 
   try {

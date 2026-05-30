@@ -156,6 +156,8 @@ async function captureCycle() {
   const transcript = speaking ? micState.transcript : '';
   try {
     const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath });
+    // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
+    if (!running) return;
     if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });
     enqueueDrip(comments);
   } finally {

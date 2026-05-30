@@ -64,7 +64,10 @@ const DEFAULTS = {
   // Codex 設定
   codex: {
     model: '',            // 空ならデフォルトモデル
-    timeoutMs: 60000      // 1回の生成のタイムアウト（低reasoningでも ~20s 程度）
+    timeoutMs: 60000,     // 1回の生成のタイムアウト（低reasoningでも ~20s 程度）
+    minIntervalMs: 1500,  // 連続生成の最小間隔(レート制御)。これ未満の再呼び出しはスキップ。
+    maxFailures: 3,       // 生成がこの回数連続で失敗したらバックオフに入る。
+    backoffMs: 30000      // バックオフ時間。この間はcodex生成をスキップしmockで継続。
   },
 
   // Anthropic (任意): 環境変数 ANTHROPIC_API_KEY が使われる

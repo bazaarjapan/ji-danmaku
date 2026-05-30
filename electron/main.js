@@ -50,7 +50,9 @@ function createOverlayForDisplay(display) {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 他アプリの裏/最小化でも弾幕アニメを止めない（Chromiumの背景スロットリング無効化）。
+      backgroundThrottling: false
     }
   });
 
@@ -116,7 +118,10 @@ function createControl() {
       // ローカルWhisper(Worker)が node_modules の WASM ランタイムを fetch で読めるよう
       // file:// への同一オリジン外アクセスを許可。このウィンドウは自前のローカルHTMLしか
       // 読み込まない(リモート/未知のコンテンツは一切開かない)ため安全。
-      webSecurity: false
+      webSecurity: false,
+      // 最小化/裏に回ってもマイク監視・発話検知(rAFループ)を止めない。
+      // これが無いとコントロール画面が隠れた途端に声反応の弾幕が止まる。
+      backgroundThrottling: false
     }
   });
   controlWin.loadFile(path.join(__dirname, '..', 'renderer', 'control.html'));

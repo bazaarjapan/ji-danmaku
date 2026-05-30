@@ -18,7 +18,10 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent }) {
       result = await codex.generate({
         count, context, transcript, imagePath, recent,
         model: cfg.codex && cfg.codex.model,
-        timeoutMs: cfg.codex && cfg.codex.timeoutMs
+        timeoutMs: cfg.codex && cfg.codex.timeoutMs,
+        minIntervalMs: cfg.codex && cfg.codex.minIntervalMs,
+        maxFailures: cfg.codex && cfg.codex.maxFailures,
+        backoffMs: cfg.codex && cfg.codex.backoffMs
       });
     } else if (brain === 'anthropic') {
       result = await anthropic.generate({

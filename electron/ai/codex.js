@@ -214,23 +214,42 @@ class AppServer {
 
 const server = new AppServer();
 let warned = false;
-let busy = false;  // app-server は1ターンずつ処理
+let busy = false;            // app-server は1ターンずつ処理
+let lastGenAt = 0;           // 直近の生成開始時刻（レート制御）
+let consecutiveFails = 0;    // 連続失敗カウント
+let backoffUntil = 0;        // この時刻まで生成をスキップ（バックオフ）
 
-// 戻り値: [{ text, style:{color?,big?} }, ...]  失敗時は null
-async function generate({ count, context, transcript, imagePath, recent, model, timeoutMs }) {
-  if (busy) return null;          // 多重実行を防止（main 側でもガード済み）
+function noteFailure(maxFailures, backoffMs) {
+  consecutiveFails++;
+  if (maxFailures && consecutiveFails >= maxFailures) {
+    backoffUntil = Date.now() + (backoffMs || 30000);
+    consecutiveFails = 0;
+    console.error(`[codex] ${maxFailures}回連続失敗 → ${Math.round((backoffMs || 30000) / 1000)}秒バックオフ。その間はmock弾幕で継続します。`);
+  }
+}
+
+// 戻り値: [{ text, style:{color?,big?} }, ...]  失敗/抑制時は null（main側でmockへフォールバック）
+async function generate({ count, context, transcript, imagePath, recent, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
+  if (busy) return null;                                   // 多重実行を防止（main 側でもガード済み）
+  const now = Date.now();
+  if (now < backoffUntil) return null;                     // バックオフ中はスキップ
+  if (minIntervalMs && now - lastGenAt < minIntervalMs) return null;  // レート制御
   busy = true;
+  lastGenAt = now;
   try {
     const promptText = buildPrompt({ count, context, transcript, recent });
     const text = await server.runTurn({ promptText, imagePath, model, timeoutMs });
     const parsed = extractJson(text || '');
     if (!parsed) {
       warnOnce('JSON を取得できませんでした');
+      noteFailure(maxFailures, backoffMs);
       return null;
     }
+    consecutiveFails = 0;   // 成功 → 失敗カウントをリセット
     return normalize(parsed);
   } catch (e) {
     warnOnce(e.message);
+    noteFailure(maxFailures, backoffMs);
     return null;
   } finally {
     busy = false;

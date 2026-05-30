@@ -15,6 +15,7 @@ let running = false;          // 弾幕配信ON/OFF
 let captureTimer = null;      // AI生成ループ
 let ambientTimer = null;      // アンビエント弾幕ループ
 let micState = { level: 0, speaking: false, transcript: '' };
+let transcriptLog = [];    // 直近の発話ログ { text, at }（話題追従の文脈用）
 let lastBatchAt = 0;       // 直近の生成サイクル開始時刻（反応トリガのデバウンス用）
 let lastAiCommentAt = 0;   // 直近にAI弾幕を画面へ流した時刻（アンビエント抑制用）
 
@@ -270,9 +271,11 @@ async function captureCycle() {
 
   // Whisperの文字起こしは発話が終わった直後に届くため、speaking=false でも
   // 直近(25秒以内)の認識結果は文脈として渡す。
-  const fresh = micState.transcript &&
-    (Date.now() - (micState.transcriptAt || 0) < 25000);
-  const transcript = (speaking || fresh) ? micState.transcript : '';
+  const nowTs = Date.now();
+  const fresh = micState.transcript && (nowTs - (micState.transcriptAt || 0) < 25000);
+  // 直近の発話を数発分(90秒以内・最大3つ)まとめ、会話の流れに沿わせる。
+  const thread = transcriptLog.filter((e) => nowTs - e.at < 90000).slice(-3).map((e) => e.text);
+  const transcript = (speaking || fresh) ? (thread.join(' / ') || micState.transcript) : '';
   try {
     const recent = recentAiTexts();
     const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath, recent });
@@ -330,6 +333,7 @@ function stopRunning() {
   lastEnqueueAt = 0;
   dripDeadline = 0;
   recentAi = [];
+  transcriptLog = [];
   prevSignature = null;
   idleStreak = 0;
   broadcastRunning();
@@ -370,9 +374,11 @@ ipcMain.handle('test-comment', (_e, text) => {
 ipcMain.on('mic', (_e, state) => {
   const prevTranscript = micState.transcript;
   micState = { ...micState, ...state };
-  // 新しい文字起こしが届いたら時刻を記録し、視聴者が即その発言に反応するよう生成を促す。
+  // 新しい文字起こしが届いたら時刻を記録し、発話ログに追記、即反応の生成を促す。
   if (state.transcript && state.transcript !== prevTranscript) {
     micState.transcriptAt = Date.now();
+    transcriptLog.push({ text: state.transcript, at: micState.transcriptAt });
+    if (transcriptLog.length > 8) transcriptLog.shift();
     triggerReactiveCycle();
   }
   // 発話の立ち上がり: フィラーONなら軽くざわつかせて即時感を出す。

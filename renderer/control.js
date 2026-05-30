@@ -37,6 +37,7 @@ function reflectConfig() {
   $('sttEnabled').checked = !!cfg.sttEnabled;
   $('whisperModel').value = cfg.whisperModel;
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
+  setSlider('voiceReactivity', cfg.voiceReactivity, (v) => `声:${v}% / 画面:${100 - v}%`, 'vrLabel');
   setSlider('ambientPerMinute', cfg.ambientPerMinute, (v) => v + '個', 'ambLabel');
   setSlider('speedMs', cfg.speedMs, (v) => (v / 1000).toFixed(1) + '秒', 'spdLabel');
   setSlider('fontSize', cfg.fontSize, (v) => v + 'px', 'fsLabel');
@@ -85,7 +86,7 @@ function bindControls() {
     restartStt();
   });
 
-  for (const id of ['captureIntervalMs', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
+  for (const id of ['captureIntervalMs', 'voiceReactivity', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
     $(id).addEventListener('input', () => {
       const el = $(id);
       const num = id === 'opacity' ? parseFloat(el.value) : parseInt(el.value, 10);

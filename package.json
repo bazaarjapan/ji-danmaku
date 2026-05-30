@@ -5,12 +5,37 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "dist": "electron-builder --win"
   },
   "author": "",
   "license": "MIT",
+  "build": {
+    "appId": "com.bazaarjapan.ji-danmaku",
+    "productName": "Ji-Danmaku",
+    "asar": false,
+    "files": [
+      "**/*",
+      "!**/node_modules/onnxruntime-node/**",
+      "!**/node_modules/sharp/**",
+      "!**/node_modules/@img/**",
+      "!renderer/_*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0"

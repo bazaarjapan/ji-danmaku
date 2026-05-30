@@ -44,6 +44,11 @@ function createOverlay() {
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // クリック透過: 弾幕は完全に「上を流れるだけ」で操作を邪魔しない。
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  // 自分が流した弾幕を画面キャプチャから除外する（Windows: WDA_EXCLUDEFROMCAPTURE）。
+  // これにより (1) アイドル検知の画面署名が自分の弾幕の動きで汚れない、
+  //          (2) AIブレインへ渡すスクショに自分の弾幕が写り込まず、実画面だけに反応できる。
+  // ユーザーの目には弾幕は通常どおり表示される（キャプチャ系ツールにのみ非表示）。
+  overlayWin.setContentProtection(true);
   overlayWin.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
 
   overlayWin.on('closed', () => { overlayWin = null; });

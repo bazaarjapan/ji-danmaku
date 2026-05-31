@@ -13,6 +13,7 @@
 //  - effort=low で低レイテンシ・低コスト。
 
 const { spawn } = require('child_process');
+const { extractJson, normalizeComments } = require('./json-comments');
 
 const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
 
@@ -269,7 +270,7 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
       return null;
     }
     consecutiveFails = 0;   // 成功 → 失敗カウントをリセット
-    return normalize(parsed);
+    return normalizeComments(parsed);
   } catch (e) {
     warnOnce(e.message);
     noteFailure(maxFailures, backoffMs);
@@ -284,37 +285,6 @@ function warnOnce(msg) {
   warned = true;
   console.error('[codex/app-server] 生成失敗(初回のみ表示):', String(msg).slice(0, 200),
     '\n  -> `codex login` 済みか確認してください。mock弾幕で継続します。');
-}
-
-function extractJson(text) {
-  if (!text) return null;
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidates = [];
-  if (fence) candidates.push(fence[1]);
-  const brace = text.match(/\{[\s\S]*\}/);
-  if (brace) candidates.push(brace[0]);
-  candidates.push(text);
-  for (const c of candidates) {
-    try {
-      const j = JSON.parse(c.trim());
-      if (j && Array.isArray(j.comments)) return j;
-    } catch {}
-  }
-  return null;
-}
-
-function normalize(j) {
-  return j.comments
-    .filter((c) => c && typeof c.text === 'string' && c.text.trim())
-    .map((c) => ({
-      text: c.text.trim().slice(0, 40),
-      style: {
-        ...(typeof c.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(c.color) ? { color: c.color } : {}),
-        ...(c.big === true ? { big: true } : {}),
-        ...(c.small === true ? { small: true } : {}),
-        ...(c.pos === 'ue' || c.pos === 'shita' ? { pos: c.pos } : {})
-      }
-    }));
 }
 
 // アプリ終了時にサーバを落とすためのフック。

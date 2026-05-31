@@ -37,3 +37,6 @@ jobs:
             echo "❌ Merge conflict markers found"; exit 1
           fi
           echo "✅ No merge conflict markers"
+
+      - name: Run unit tests
+        run: npm test

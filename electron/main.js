@@ -128,6 +128,21 @@ function createControl() {
   controlWin.on('closed', () => { controlWin = null; });
 }
 
+// コントロール画面を最前面に呼び出す（F7）。閉じていれば作り直す。
+// 全画面アプリの裏に隠れて見失った時の救済。
+function summonControl() {
+  if (!controlWin || controlWin.isDestroyed()) { createControl(); return; }
+  if (controlWin.isMinimized()) controlWin.restore();
+  controlWin.show();
+  // Windowsでフォーカス奪取を確実にするため一時的に最前面化してから戻す。
+  controlWin.setAlwaysOnTop(true);
+  try { controlWin.moveTop(); } catch {}
+  controlWin.focus();
+  setTimeout(() => {
+    if (controlWin && !controlWin.isDestroyed()) controlWin.setAlwaysOnTop(false);
+  }, 500);
+}
+
 // ---- 弾幕送出 ----------------------------------------------------------
 
 // AIコメントの重複抑制用: 直近に流したテキストをローリング保持する。
@@ -493,10 +508,14 @@ app.whenReady().then(() => {
   screen.on('display-removed', scheduleOverlayRebuild);
   screen.on('display-metrics-changed', scheduleOverlayRebuild);
 
-  // F8 で配信ON/OFF、F9 でクリック透過の一時解除トグル（デバッグ用）
+  // F8 で配信ON/OFF
   globalShortcut.register('F8', () => {
     if (running) stopRunning(); else startRunning();
   });
+  // F7 でコントロール画面を最前面に呼び出す（裏に隠れた時の救済）
+  globalShortcut.register('F7', summonControl);
+  // 起動時にも一度前面化して見失いを防ぐ
+  setTimeout(summonControl, 800);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

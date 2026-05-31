@@ -30,10 +30,17 @@
     <div class="vu"><div id="vuBar"></div></div>
     <div id="micInfo" class="hint">マイク未開始</div>
     <div class="row">
-      <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こししてAIに渡す（ローカルWhisper・無料）</label>
+      <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こししてAIに渡す</label>
     </div>
     <label class="field">
-      Whisperモデル
+      音声認識エンジン
+      <select id="sttBackend">
+        <option value="local">ローカルWhisper（無料・オフライン）</option>
+        <option value="openai">OpenAI gpt-realtime-whisper（高精度・従量課金）</option>
+      </select>
+    </label>
+    <label class="field">
+      Whisperモデル（ローカル時）
       <select id="whisperModel">
         <option value="Xenova/whisper-tiny">tiny（最速・粗い）</option>
         <option value="Xenova/whisper-base">base（軽い）</option>

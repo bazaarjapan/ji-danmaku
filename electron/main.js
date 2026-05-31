@@ -3,13 +3,31 @@
 const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
+const openaiStt = require('./ai/openai-stt');
+
+// .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。値はログに出さない。
+function loadEnvLocal() {
+  try {
+    const txt = fs.readFileSync(path.join(__dirname, '..', '.env.local'), 'utf8');
+    for (const line of txt.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      const k = m[1];
+      const v = m[2].trim().replace(/^["']|["']$/g, '');
+      if (!(k in process.env)) process.env[k] = v;
+    }
+  } catch {}
+}
+loadEnvLocal();
 
 let overlayWins = [];         // 各ディスプレイのオーバーレイ（マルチモニター対応）
 let controlWin = null;
 let cfg = configStore.load();
+openaiStt.configure(process.env.OPENAI_API_KEY, cfg.openaiSttModel);
 
 let running = false;          // 弾幕配信ON/OFF
 let captureTimer = null;      // AI生成ループ
@@ -448,6 +466,9 @@ ipcMain.handle('set-config', (_e, patch) => {
   const hadMulti = cfg.multiMonitor;
   cfg = configStore.deepMerge(cfg, patch || {});
   configStore.save(cfg);
+  // 音声認識バックエンド/モデルの変更を反映。openai以外に切替えたらWSを閉じる。
+  openaiStt.configure(process.env.OPENAI_API_KEY, cfg.openaiSttModel);
+  if (cfg.sttBackend !== 'openai') openaiStt.close();
   // マルチモニター設定が変わったらオーバーレイを作り直す（スタイルは生成側で再送）。
   if (patch && 'multiMonitor' in patch && patch.multiMonitor !== hadMulti) {
     createOverlays();
@@ -497,6 +518,19 @@ ipcMain.on('mic', (_e, state) => {
 
 ipcMain.on('context-cache', (_e, c) => { if (c) _lastContext = c; });
 
+// 'openai' バックエンド時: レンダラーの発話音声(Float32 24kHz)を Realtime で文字起こしして返す。
+ipcMain.on('stt-utterance', async (e, audio) => {
+  if (cfg.sttBackend !== 'openai') return;
+  if (!openaiStt.isConfigured()) {
+    if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OPENAI_API_KEY未設定(.env.local)' });
+    return;
+  }
+  let text = '';
+  try { text = await openaiStt.transcribe(audio); } catch {}
+  if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text });
+});
+ipcMain.on('stt-stop', () => { openaiStt.close(); });
+
 // ---- アプリライフサイクル ----------------------------------------------
 
 app.whenReady().then(() => {
@@ -528,5 +562,6 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   try { require('./ai/codex').shutdown(); } catch {}
+  try { openaiStt.close(); } catch {}
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

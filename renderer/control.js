@@ -11,6 +11,7 @@ async function init() {
   reflectConfig();
   bindControls();
   window.ji.onRunning((r) => setRunning(r));
+  window.ji.onSttResult(handleSttResult);
   window.ji.onStatus((s) => {
     if (s.brain) $('brainBadge').textContent = 'brain: ' + s.brain;
     // 停止後に届く遅延ステータスでUIを「配信中」に戻さないよう running でガード。
@@ -35,6 +36,7 @@ function reflectConfig() {
   $('ambientPerMinute').disabled = cfg.ambientEnabled === false;
   $('micEnabled').checked = !!cfg.micEnabled;
   $('sttEnabled').checked = !!cfg.sttEnabled;
+  $('sttBackend').value = cfg.sttBackend || 'local';
   $('whisperModel').value = cfg.whisperModel;
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
   setSlider('voiceReactivity', cfg.voiceReactivity, (v) => `声:${v}% / 画面:${100 - v}%`, 'vrLabel');
@@ -85,6 +87,12 @@ function bindControls() {
     patch({ whisperModel: cfg.whisperModel });
     restartStt();
   });
+  $('sttBackend').addEventListener('change', () => {
+    cfg.sttBackend = $('sttBackend').value;
+    patch({ sttBackend: cfg.sttBackend });
+    // バックエンドで取り込みレートが変わるため、マイクごと再起動して反映。
+    if (micStream) { stopMic(); startMic(); }
+  });
 
   for (const id of ['captureIntervalMs', 'voiceReactivity', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
     $(id).addEventListener('input', () => {
@@ -125,15 +133,16 @@ function setRunning(r) {
 let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null;
 let lastTranscript = '', speaking = false, speakDecay = 0;
 
-// 音声認識(ローカルWhisper)は 16kHz mono で扱う。
-const SR_HZ = 16000;
-const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ(約0.256s)
-const STT_CHUNK_MS = (STT_CHUNK / SR_HZ) * 1000;  // ≈256ms
-const STT_MIN_SAMPLES = SR_HZ * 0.8;     // 0.8秒未満の発話は誤認識の元なので無視
+// 取り込みサンプルレート: ローカルWhisperは16kHz、OpenAI Realtimeは24kHz。
+let sttSR = 16000;
+const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ
 const STT_PREROLL_CHUNKS = 2;            // 発話の頭欠けを防ぐため直前(約0.5s)を含める
-// 区切り(会話の間)と最大長は設定から算出する。
-function sttSilenceChunks() { return Math.max(2, Math.round((cfg.sttSilenceMs ?? 1200) / STT_CHUNK_MS)); }
-function sttMaxSamples() { return SR_HZ * ((cfg.sttMaxMs ?? 20000) / 1000); }
+function isOpenAiStt() { return cfg.sttBackend === 'openai'; }
+// 区切り(会話の間)・最小長・最大長は実サンプルレートと設定から算出。
+function sttChunkMs() { return (STT_CHUNK / sttSR) * 1000; }
+function sttSilenceChunks() { return Math.max(2, Math.round((cfg.sttSilenceMs ?? 1200) / sttChunkMs())); }
+function sttMinSamples() { return sttSR * 0.8; }   // 0.8秒未満は誤認識の元なので無視
+function sttMaxSamples() { return sttSR * ((cfg.sttMaxMs ?? 20000) / 1000); }
 
 async function startMic() {
   if (micStream) return;
@@ -143,8 +152,9 @@ async function startMic() {
     $('micInfo').textContent = 'マイク取得失敗: ' + e.message;
     return;
   }
-  // Whisper入力に合わせて 16kHz で取り込む（ブラウザ側が自動リサンプル）。
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SR_HZ });
+  // バックエンドに合わせた取り込みレート（ローカル16k / OpenAI 24k）。ブラウザが自動リサンプル。
+  sttSR = isOpenAiStt() ? 24000 : 16000;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sttSR });
   const src = audioCtx.createMediaStreamSource(micStream);
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
@@ -197,15 +207,24 @@ function stopMic() {
 
 // ---- ローカルWhisper (Web Worker) --------------------------------------
 
-let sttWorker = null, sttReady = false, sttBusy = false;
+let sttWorker = null, sttReady = false, sttBusy = false, sttActive = false;
 // VAD用の収集バッファ
 let utterChunks = [], utterLen = 0, silentChunks = 0;
 let preRoll = [];   // 無音中の直前チャンク（発話の頭を取りこぼさない）
 
 function startStt() {
-  if (sttWorker) return;
-  sttReady = false; sttBusy = false;
+  if (sttActive) return;
+  sttReady = false; sttBusy = false; sttActive = true;
   utterChunks = []; utterLen = 0; silentChunks = 0; preRoll = [];
+
+  // OpenAIバックエンド: workerを使わず、発話ごとに main 経由で Realtime文字起こしへ。
+  if (isOpenAiStt()) {
+    sttReady = true;
+    $('sttInfo').textContent = '☁ OpenAI(gpt-realtime-whisper)で文字起こし';
+    return;
+  }
+
+  // ローカルWhisper: Web Worker
   try {
     sttWorker = new Worker('whisper-worker.js', { type: 'module' });
   } catch (e) {
@@ -242,11 +261,23 @@ function startStt() {
 
 function stopStt() {
   if (sttWorker) { try { sttWorker.terminate(); } catch {} sttWorker = null; }
-  sttReady = false; sttBusy = false;
+  if (isOpenAiStt()) { try { window.ji.sttStop(); } catch {} }
+  sttReady = false; sttBusy = false; sttActive = false;
   utterChunks = []; utterLen = 0; silentChunks = 0;
   preRoll = [];
   lastTranscript = '';
   $('sttInfo').textContent = '';
+}
+
+// main からの OpenAI 文字起こし結果。
+function handleSttResult(r) {
+  sttBusy = false;
+  if (!r) return;
+  if (r.error) { $('sttInfo').textContent = 'OpenAI STTエラー: ' + r.error; return; }
+  if (r.text) {
+    lastTranscript = r.text.slice(-120);
+    $('sttInfo').textContent = '認識: ' + lastTranscript;
+  }
 }
 
 // 設定変更でモデルを切り替えるときの再起動。
@@ -256,9 +287,9 @@ function restartStt() {
   if (cfg.sttEnabled) startStt();
 }
 
-// ScriptProcessor から呼ばれる: 発話を貯めて、切れ目でWhisperへ。
+// ScriptProcessor から呼ばれる: 発話を貯めて、切れ目で文字起こしへ。
 function onAudioFrame(e) {
-  if (!sttWorker) return;
+  if (!sttActive) return;
   const input = e.inputBuffer.getChannelData(0);
   let sum = 0;
   for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
@@ -294,13 +325,20 @@ function onAudioFrame(e) {
 function flushUtterance() {
   const chunks = utterChunks, total = utterLen;
   utterChunks = []; utterLen = 0; silentChunks = 0;
-  if (total < STT_MIN_SAMPLES) return;        // 短すぎ → 破棄
-  if (!sttReady || sttBusy) return;           // モデル未準備/処理中 → 今回は捨てて溜めない
+  if (total < sttMinSamples()) return;        // 短すぎ → 破棄
+  if (!sttReady || sttBusy) return;           // 未準備/処理中 → 今回は捨てて溜めない
   const audio = new Float32Array(total);
   let off = 0;
   for (const c of chunks) { audio.set(c, off); off += c.length; }
   sttBusy = true;
-  sttWorker.postMessage({ type: 'transcribe', model: cfg.whisperModel, audio }, [audio.buffer]);
+  if (isOpenAiStt()) {
+    // main 経由で OpenAI Realtime へ（結果は onSttResult で受信）。
+    window.ji.sttTranscribe(audio);
+  } else if (sttWorker) {
+    sttWorker.postMessage({ type: 'transcribe', model: cfg.whisperModel, audio }, [audio.buffer]);
+  } else {
+    sttBusy = false;
+  }
 }
 
 init();

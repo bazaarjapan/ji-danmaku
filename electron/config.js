@@ -68,6 +68,13 @@ const DEFAULTS = {
   // Transformers.js + onnxruntime-web(WASM)でこのPC上のCPUだけで動く。追加課金なし。
   // 初回のみモデルをDL(baseで約150MB)→以降はキャッシュからオフライン動作。
   sttEnabled: true,
+
+  // 音声認識バックエンド: 'local'(ローカルWhisper・無料) | 'openai'(クラウド・高精度・従量課金)。
+  // 'openai' は発話の区切りごとに Realtime API(WebSocket)へ音声を送って文字起こしさせるので
+  // 「声に反応する間だけ課金」。文字起こし結果は既存どおりcodexへ渡す。要 .env.local の OPENAI_API_KEY。
+  sttBackend: 'local',
+  // OpenAI Realtime 文字起こしモデル(最新)。gpt-realtime-whisper。
+  openaiSttModel: 'gpt-realtime-whisper',
   // Whisperモデル: tiny=最速/粗い, base=軽い, small=精度と速度のバランス(推奨),
   // medium=高精度だが重い(WebGPU推奨)。日本語は base だと弱いので既定は small。
   whisperModel: 'Xenova/whisper-small',

@@ -91,8 +91,10 @@ npm run dist
 | キャプチャ対象 | `captureDisplayIndex`。AIに見せる画面の番号（null でプライマリ） |
 | NGワード | `ngWords` / `ngMode`（drop=除外 / mask=伏字）。不適切語フィルタ |
 | マイク監視 | 喋ると弾幕が増える（音量検知・常時オフライン） |
-| 発話の文字起こし（Whisper） | ローカルWhisperで発話内容を認識しブレインへ渡す |
-| Whisperモデル | `tiny`(最速/粗い) / `base`(推奨) / `small`(高精度/重い) |
+| 発話の文字起こし | 発話内容を認識しブレインへ渡す |
+| 音声認識エンジン | `sttBackend`: `local`(ローカルWhisper・無料) / `openai`(gpt-realtime-whisper・高精度/従量) |
+| Whisperモデル | ローカル時: `tiny` / `base` / `small`(推奨) / `medium` |
+| OpenAI音声認識 | `openai` 選択時、発話の区切りごとに Realtime API へ送信($0.017/分・声に反応する間だけ課金)。`.env.local` の `OPENAI_API_KEY` を使用、音声はクラウド送信 |
 
 ### ローカルWhisper（音声認識）
 

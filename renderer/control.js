@@ -299,6 +299,7 @@ function setRunning(r) {
 // ---- マイク監視 --------------------------------------------------------
 
 let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null;
+let micStartToken = 0;
 let lastTranscript = '', speaking = false, speakDecay = 0;
 
 // 取り込みサンプルレート: ローカルWhisperは16kHz、GPT Realtime Whisperは24kHz。
@@ -314,16 +315,25 @@ function sttMaxSamples() { return sttSR * ((cfg.sttMaxMs ?? 20000) / 1000); }
 
 async function startMic() {
   if (micStream) return;
+  const token = ++micStartToken;
   setMicStatus('許可待ち', 'loading');
   setSttStatus(cfg.sttEnabled ? '待機中' : 'OFF', cfg.sttEnabled ? 'idle' : 'muted');
+  let stream = null;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
+    if (token !== micStartToken || !running) return;
     $('micInfo').textContent = 'マイク取得失敗: ' + e.message;
     setMicStatus('許可エラー', 'error');
     setSttStatus('停止', 'idle');
     return;
   }
+  if (token !== micStartToken || !running || !cfg.micEnabled) {
+    stream.getTracks().forEach((t) => t.stop());
+    setStoppedInputStatus();
+    return;
+  }
+  micStream = stream;
   // バックエンドに合わせた取り込みレート（ローカル16k / GPT Realtime Whisper 24k）。
   sttSR = isOpenAiStt() ? 24000 : 16000;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sttSR });
@@ -370,6 +380,7 @@ async function startMic() {
 }
 
 function stopMic() {
+  micStartToken++;
   if (micRAF) cancelAnimationFrame(micRAF);
   micRAF = null;
   if (scriptNode) { try { scriptNode.disconnect(); } catch {} scriptNode.onaudioprocess = null; scriptNode = null; }

@@ -37,6 +37,7 @@ async function init() {
       $('statusText').textContent = s.idle
         ? '💤 アイドル（画面変化なし → 生成スキップ中・節約）'
         : '配信中（弾幕が流れています）';
+      $('mainStatusText').textContent = s.idle ? 'アイドル節約中' : '弾幕稼働中';
     }
     if (s.lastContext) {
       const c = s.lastContext;
@@ -71,6 +72,8 @@ function reflectConfig() {
   setSlider('opacity', cfg.opacity, (v) => Math.round(v * 100) + '%', 'opLabel');
   // 起動時に累計の概算コストを表示。
   updateCost((cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017), cfg.openaiUsageMs);
+  setMainRunStatus(running);
+  setStoppedInputStatus();
 }
 
 function setSlider(id, val, fmt, labelId) {
@@ -107,14 +110,16 @@ function bindControls() {
     applyVisibility();  // フィラーOFFで密度スライダーを隠す
   });
   $('micEnabled').addEventListener('change', () => {
-    patch({ micEnabled: $('micEnabled').checked });
-    if ($('micEnabled').checked) startMic(); else stopMic();
+    cfg.micEnabled = $('micEnabled').checked;
+    patch({ micEnabled: cfg.micEnabled });
+    if (running && cfg.micEnabled) startMic(); else stopMic();
     applyVisibility();
   });
   $('sttEnabled').addEventListener('change', () => {
     cfg.sttEnabled = $('sttEnabled').checked;
     patch({ sttEnabled: cfg.sttEnabled });
     if (cfg.sttEnabled) { if (micStream) startStt(); } else stopStt();
+    if (!micStream) setStoppedInputStatus();
     applyVisibility();
   });
   $('whisperModel').addEventListener('change', () => {
@@ -128,7 +133,8 @@ function bindControls() {
     applyVisibility();  // GPT Realtime Whisper選択でWhisperモデルを隠す
     updateOpenAiKeyStatus();
     // バックエンドで取り込みレートが変わるため、マイクごと再起動して反映。
-    if (micStream) { stopMic(); startMic(); }
+    if (micStream) { stopMic(); if (running && cfg.micEnabled) startMic(); }
+    else setStoppedInputStatus();
   });
   $('saveOpenaiApiKey').addEventListener('click', saveOpenAiKey);
   $('clearOpenaiApiKey').addEventListener('click', clearOpenAiKey);
@@ -173,6 +179,54 @@ function setSettingsOpen(open) {
   $('settingsBackdrop').classList.toggle('hidden', !open);
   $('settingsPanel').setAttribute('aria-hidden', open ? 'false' : 'true');
   $('menuToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function setSignal(cardId, textId, text, state = 'idle') {
+  const card = $(cardId);
+  const label = $(textId);
+  if (card) card.dataset.state = state;
+  if (label) label.textContent = text;
+}
+
+function setMainRunStatus(isRunning) {
+  $('mainStatusText').textContent = isRunning ? '弾幕稼働中' : '停止中';
+  const badge = $('mainModeBadge');
+  badge.textContent = isRunning ? 'LIVE' : 'STANDBY';
+  badge.classList.toggle('live', isRunning);
+  badge.classList.toggle('off', !isRunning);
+}
+
+function setMicStatus(text, state = 'idle') {
+  setSignal('micStateCard', 'micStateText', text, state);
+}
+
+function setSttStatus(text, state = 'idle') {
+  setSignal('sttStateCard', 'sttStateText', text, state);
+}
+
+function setWhisperStatus(shortText, detailText, state = 'idle', progress = 0) {
+  setSignal('whisperStateCard', 'whisperStateText', shortText, state);
+  $('whisperDetailText').textContent = detailText;
+  $('whisperProgressBar').style.width = `${Math.max(0, Math.min(100, progress))}%`;
+}
+
+function setSttInfo(text) {
+  $('sttInfo').textContent = text || '';
+}
+
+function setStoppedInputStatus() {
+  setMicStatus(
+    micStream ? '監視中' : (cfg && cfg.micEnabled ? '停止' : 'OFF'),
+    micStream ? 'active' : (cfg && cfg.micEnabled ? 'idle' : 'muted')
+  );
+  setSttStatus(cfg && cfg.sttEnabled ? '停止' : 'OFF', cfg && cfg.sttEnabled ? 'idle' : 'muted');
+  setWhisperStatus(
+    cfg && cfg.sttBackend === 'openai' ? 'GPT Realtime' : '未起動',
+    cfg && cfg.sttEnabled ? 'スタートすると文字起こしを準備します' : '文字起こしはOFFです',
+    cfg && cfg.sttEnabled ? 'idle' : 'muted',
+    0
+  );
+  setSttInfo('');
 }
 
 function updateOpenAiKeyStatus(message, level) {
@@ -229,6 +283,7 @@ async function clearOpenAiKey() {
 
 function setRunning(r) {
   running = r;
+  setMainRunStatus(r);
   const btn = $('toggle');
   btn.classList.toggle('on', r);
   btn.classList.toggle('off', !r);
@@ -238,6 +293,7 @@ function setRunning(r) {
   $('dot').classList.toggle('live', r);
   $('statusText').textContent = r ? '配信中（弾幕が流れています）' : '停止中';
   if (r && $('micEnabled').checked) startMic();
+  else stopMic();
 }
 
 // ---- マイク監視 --------------------------------------------------------
@@ -258,10 +314,14 @@ function sttMaxSamples() { return sttSR * ((cfg.sttMaxMs ?? 20000) / 1000); }
 
 async function startMic() {
   if (micStream) return;
+  setMicStatus('許可待ち', 'loading');
+  setSttStatus(cfg.sttEnabled ? '待機中' : 'OFF', cfg.sttEnabled ? 'idle' : 'muted');
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
     $('micInfo').textContent = 'マイク取得失敗: ' + e.message;
+    setMicStatus('許可エラー', 'error');
+    setSttStatus('停止', 'idle');
     return;
   }
   // バックエンドに合わせた取り込みレート（ローカル16k / GPT Realtime Whisper 24k）。
@@ -294,6 +354,7 @@ async function startMic() {
   };
   loop();
   $('micInfo').textContent = '🎤 マイク監視中';
+  setMicStatus('監視中', 'active');
 
   // 生PCMを拾って発話の切れ目でWhisperに渡す。
   scriptNode = audioCtx.createScriptProcessor(STT_CHUNK, 1, 1);
@@ -302,6 +363,10 @@ async function startMic() {
   scriptNode.connect(audioCtx.destination); // 発火のため接続（出力は無音）
 
   if (cfg.sttEnabled) startStt();
+  else {
+    setSttStatus('OFF', 'muted');
+    setWhisperStatus('未起動', '文字起こしはOFFです', 'muted', 0);
+  }
 }
 
 function stopMic() {
@@ -315,6 +380,7 @@ function stopMic() {
   $('vuBar').style.width = '0%';
   $('micInfo').textContent = 'マイク停止';
   stopStt();
+  setMicStatus(cfg && cfg.micEnabled ? '停止' : 'OFF', cfg && cfg.micEnabled ? 'idle' : 'muted');
 }
 
 // ---- ローカルWhisper (Web Worker) --------------------------------------
@@ -328,16 +394,28 @@ function startStt() {
   if (sttActive) return;
   sttReady = false; sttBusy = false; sttActive = true;
   utterChunks = []; utterLen = 0; silentChunks = 0; preRoll = [];
+  setSttStatus('準備中', 'loading');
+  setWhisperStatus(
+    isOpenAiStt() ? 'GPT Realtime' : '読込中',
+    isOpenAiStt() ? 'GPT Realtime Whisperを準備中' : 'Whisperモデルを読込中です',
+    'loading',
+    12
+  );
 
   // GPT Realtime Whisperバックエンド: workerを使わず、発話ごとに main 経由で Realtime文字起こしへ。
   if (isOpenAiStt()) {
     if (!cfg.openaiApiKeyConfigured) {
-      sttReady = false;
-      $('sttInfo').textContent = 'GPT Realtime Whisper用のOpenAI APIキーを保存してください';
+      sttReady = false; sttActive = false;
+      const message = 'GPT Realtime Whisper用のOpenAI APIキーを保存してください';
+      setSttInfo(message);
+      setSttStatus('キー未設定', 'error');
+      setWhisperStatus('要APIキー', message, 'error', 0);
       return;
     }
     sttReady = true;
-    $('sttInfo').textContent = '☁ GPT Realtime Whisperで文字起こし';
+    setSttInfo('☁ GPT Realtime Whisperで文字起こし');
+    setSttStatus('待機中', 'ready');
+    setWhisperStatus('GPT Realtime', '発話を検出するとクラウドで文字起こしします', 'ready', 100);
     return;
   }
 
@@ -345,7 +423,11 @@ function startStt() {
   try {
     sttWorker = new Worker('whisper-worker.js', { type: 'module' });
   } catch (e) {
-    $('sttInfo').textContent = 'Whisper起動失敗: ' + e.message;
+    const message = 'Whisper起動失敗: ' + e.message;
+    setSttInfo(message);
+    setSttStatus('エラー', 'error');
+    setWhisperStatus('起動失敗', message, 'error', 0);
+    sttActive = false;
     sttWorker = null;
     return;
   }
@@ -353,24 +435,41 @@ function startStt() {
     const m = ev.data || {};
     if (m.type === 'progress') {
       if (m.status === 'progress' && typeof m.progress === 'number') {
-        $('sttInfo').textContent = `WhisperモデルDL中… ${Math.round(m.progress)}%`;
+        const progress = Math.round(m.progress);
+        const message = `WhisperモデルDL中… ${progress}%`;
+        setSttInfo(message);
+        setSttStatus('準備中', 'loading');
+        setWhisperStatus(`DL中 ${progress}%`, message, 'loading', progress);
       }
     } else if (m.type === 'ready') {
       sttReady = true;
-      $('sttInfo').textContent = `🧠 Whisper準備OK（${m.device || 'wasm'}・発話を文字起こし中）`;
+      const message = `Whisper準備OK（${m.device || 'wasm'}・発話を文字起こし中）`;
+      setSttInfo(`🧠 ${message}`);
+      setSttStatus('待機中', 'ready');
+      setWhisperStatus('準備OK', message, 'ready', 100);
     } else if (m.type === 'result') {
       sttBusy = false;
       if (m.text) { lastTranscript = m.text.slice(-120); pushRecognized(m.text); }
+      setSttStatus('待機中', 'ready');
     } else if (m.type === 'skipped') {
       sttBusy = false;
+      setSttStatus('待機中', 'ready');
     } else if (m.type === 'error') {
       sttBusy = false;
-      $('sttInfo').textContent = 'Whisperエラー: ' + (m.message || '').slice(0, 80);
+      const message = 'Whisperエラー: ' + (m.message || '').slice(0, 80);
+      setSttInfo(message);
+      setSttStatus('エラー', 'error');
+      setWhisperStatus('エラー', message, 'error', 0);
     }
   };
-  sttWorker.onerror = (e) => { $('sttInfo').textContent = 'Whisperエラー: ' + e.message; };
+  sttWorker.onerror = (e) => {
+    const message = 'Whisperエラー: ' + e.message;
+    setSttInfo(message);
+    setSttStatus('エラー', 'error');
+    setWhisperStatus('エラー', message, 'error', 0);
+  };
   sttWorker.postMessage({ type: 'load', model: cfg.whisperModel });
-  $('sttInfo').textContent = 'Whisperモデル読込中…（初回はDL）';
+  setSttInfo('Whisperモデル読込中…（初回はDL）');
 }
 
 function stopStt() {
@@ -380,16 +479,27 @@ function stopStt() {
   utterChunks = []; utterLen = 0; silentChunks = 0;
   preRoll = [];
   lastTranscript = '';
-  $('sttInfo').textContent = '';
+  setStoppedInputStatus();
 }
 
 // main からの OpenAI 文字起こし結果。
 function handleSttResult(r) {
   sttBusy = false;
   if (!r) return;
-  if (r.error) { $('sttInfo').textContent = 'GPT Realtime Whisperエラー: ' + r.error; return; }
+  if (r.error) {
+    const message = 'GPT Realtime Whisperエラー: ' + r.error;
+    setSttInfo(message);
+    setSttStatus('エラー', 'error');
+    setWhisperStatus('エラー', message, 'error', 0);
+    return;
+  }
   if (typeof r.usageUsd === 'number') updateCost(r.usageUsd, r.usageMs);
-  if (r.text) { lastTranscript = r.text.slice(-120); pushRecognized(r.text); }
+  if (r.text) {
+    lastTranscript = r.text.slice(-120);
+    pushRecognized(r.text);
+    setSttStatus('待機中', 'ready');
+    setWhisperStatus('GPT Realtime', '発話を検出するとクラウドで文字起こしします', 'ready', 100);
+  }
 }
 
 // OpenAI従量課金の概算表示（累計）。
@@ -468,6 +578,7 @@ function flushUtterance() {
   let off = 0;
   for (const c of chunks) { audio.set(c, off); off += c.length; }
   sttBusy = true;
+  setSttStatus('解析中', 'loading');
   if (isOpenAiStt()) {
     // main 経由で OpenAI Realtime へ（結果は onSttResult で受信）。
     window.ji.sttTranscribe(audio);

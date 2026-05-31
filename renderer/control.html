@@ -12,6 +12,33 @@
   </header>
 
   <section class="main-toggle">
+    <div class="live-console" aria-live="polite">
+      <div class="console-head">
+        <div>
+          <span class="eyebrow">現在の状況</span>
+          <strong id="mainStatusText">停止中</strong>
+        </div>
+        <span id="mainModeBadge" class="mode-badge off">STANDBY</span>
+      </div>
+      <div class="signal-grid">
+        <div id="micStateCard" class="signal-card" data-state="idle">
+          <span>マイク</span>
+          <strong id="micStateText">停止</strong>
+        </div>
+        <div id="sttStateCard" class="signal-card" data-state="idle">
+          <span>文字起こし</span>
+          <strong id="sttStateText">停止</strong>
+        </div>
+        <div id="whisperStateCard" class="signal-card" data-state="idle">
+          <span>Whisper</span>
+          <strong id="whisperStateText">未起動</strong>
+        </div>
+      </div>
+      <div class="whisper-strip">
+        <span id="whisperDetailText">スタートすると文字起こしを準備します</span>
+        <div class="progress"><div id="whisperProgressBar"></div></div>
+      </div>
+    </div>
     <button id="toggle" class="big-btn off">▶ 字弾幕スタート</button>
     <div class="live-transcript" aria-live="polite">
       <span>文字起こし</span>

@@ -14,6 +14,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
   const brain = cfg.brain || 'codex';
 
   let result = null;
+  let errorMessage = '';
   try {
     if (brain === 'codex') {
       result = await codex.generate({
@@ -32,18 +33,31 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
       });
     }
   } catch (e) {
+    errorMessage = e.message;
     console.error('[ai] brain error:', e.message);
     logger.error('ai.brain_error', { brain, message: e.message });
   }
 
   if (result && result.length) {
-    return { source: brain, comments: result };
+    return { source: brain, requestedBrain: brain, comments: result, fallbackFrom: '', error: '' };
   }
   if (brain !== 'mock') {
     logger.warn('ai.fallback_to_mock', { brain, count: n });
   }
   // フォールバック: 文脈を活かしたアンビエント
-  return { source: 'mock', comments: mock.generate(n, context || {}) };
+  return {
+    source: 'mock',
+    requestedBrain: brain,
+    comments: mock.generate(n, context || {}),
+    fallbackFrom: brain !== 'mock' ? brain : '',
+    error: errorMessage || (brain !== 'mock' ? 'AI生成結果が空のためmockへフォールバック' : '')
+  };
 }
 
-module.exports = { generateBatch, mock };
+function status() {
+  return {
+    codex: codex.status ? codex.status() : {}
+  };
+}
+
+module.exports = { generateBatch, mock, status };

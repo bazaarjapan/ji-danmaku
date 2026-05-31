@@ -292,4 +292,16 @@ function shutdown() {
   try { if (server.child) server.child.kill(); } catch {}
 }
 
-module.exports = { generate, shutdown };
+function status() {
+  const now = Date.now();
+  return {
+    serverRunning: !!(server.child && !server.child.killed),
+    busy,
+    warned,
+    consecutiveFails,
+    backoffRemainingMs: Math.max(0, backoffUntil - now),
+    lastGenAt
+  };
+}
+
+module.exports = { generate, shutdown, status };

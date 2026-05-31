@@ -128,10 +128,12 @@ let lastTranscript = '', speaking = false, speakDecay = 0;
 // 音声認識(ローカルWhisper)は 16kHz mono で扱う。
 const SR_HZ = 16000;
 const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ(約0.256s)
+const STT_CHUNK_MS = (STT_CHUNK / SR_HZ) * 1000;  // ≈256ms
 const STT_MIN_SAMPLES = SR_HZ * 0.8;     // 0.8秒未満の発話は誤認識の元なので無視
-const STT_MAX_SAMPLES = SR_HZ * 12;      // 12秒で強制的に区切る
-const STT_SILENCE_CHUNKS = 3;            // 約0.77秒の無音で発話終了とみなす
 const STT_PREROLL_CHUNKS = 2;            // 発話の頭欠けを防ぐため直前(約0.5s)を含める
+// 区切り(会話の間)と最大長は設定から算出する。
+function sttSilenceChunks() { return Math.max(2, Math.round((cfg.sttSilenceMs ?? 1200) / STT_CHUNK_MS)); }
+function sttMaxSamples() { return SR_HZ * ((cfg.sttMaxMs ?? 20000) / 1000); }
 
 async function startMic() {
   if (micStream) return;
@@ -282,7 +284,9 @@ function onAudioFrame(e) {
     if (preRoll.length > STT_PREROLL_CHUNKS) preRoll.shift();
   }
 
-  if (utterLen >= STT_MAX_SAMPLES || (silentChunks >= STT_SILENCE_CHUNKS && utterLen > 0)) {
+  // 発話の終わりらしい「間」(sttSilenceMs)まで待って一文まるごと解析。
+  // 区切りが来ない長文だけ sttMaxMs で強制区切り。
+  if (utterLen >= sttMaxSamples() || (silentChunks >= sttSilenceChunks() && utterLen > 0)) {
     flushUtterance();
   }
 }

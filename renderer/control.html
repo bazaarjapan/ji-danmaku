@@ -40,8 +40,8 @@
         <label class="field">
           音声認識エンジン
           <select id="sttBackend">
-            <option value="local">ローカルWhisper（無料・オフライン）</option>
-            <option value="openai">OpenAI（高精度・従量課金）</option>
+            <option value="local">ローカルWhisper（既定・無料・オフライン）</option>
+            <option value="openai">GPT Realtime Whisper（手動切替・高精度・従量課金）</option>
           </select>
         </label>
         <label class="field" id="whisperModelField">
@@ -55,7 +55,7 @@
         </label>
         <div id="openaiKeyField">
           <label class="field">
-            OpenAI APIキー（gpt-realtime-whisper）
+            OpenAI APIキー（GPT Realtime Whisper）
             <div class="secret-row">
               <input
                 type="password"

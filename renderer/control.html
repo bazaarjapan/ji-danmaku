@@ -6,115 +6,111 @@
   <title>Ji-Danmaku コントロール</title>
 </head>
 <body>
-  <header>
-    <h1>🎏 Ji-Danmaku</h1>
-    <p class="sub">画面とマイクを監視して、ニコニコ風の弾幕を流します</p>
+  <header class="app-header">
+    <h1>Ji-Danmaku</h1>
+    <button id="menuToggle" class="icon-btn" type="button" title="設定" aria-label="設定を開く" aria-controls="settingsPanel" aria-expanded="false">☰</button>
   </header>
 
-  <!-- 配信 -->
   <section class="main-toggle">
-    <button id="toggle" class="big-btn off">▶ 配信スタート <span class="hot">(F8)</span></button>
-    <div class="status">
-      <span id="dot" class="dot"></span>
-      <span id="statusText">停止中</span>
-      <span id="brainBadge" class="badge">brain: -</span>
-    </div>
+    <button id="toggle" class="big-btn off">▶ 字弾幕スタート</button>
   </section>
 
-  <!-- 音声・マイク -->
-  <section class="mic">
-    <h2>🎤 音声・マイク</h2>
-    <div class="row">
-      <label><input type="checkbox" id="micEnabled" /> マイク監視（喋ると弾幕が反応）</label>
+  <div id="settingsBackdrop" class="settings-backdrop hidden"></div>
+  <aside id="settingsPanel" class="settings-panel hidden" aria-hidden="true">
+    <div class="settings-head">
+      <h2>設定</h2>
+      <button id="menuClose" class="icon-btn" type="button" title="閉じる" aria-label="設定を閉じる">×</button>
     </div>
 
-    <div id="micDetails">
-      <div class="vu"><div id="vuBar"></div></div>
-      <div id="micInfo" class="hint">マイク未開始</div>
-
+    <section class="mic">
+      <h2>音声・マイク</h2>
       <div class="row">
-        <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こしして反応させる</label>
+        <label><input type="checkbox" id="micEnabled" /> マイク監視（喋ると弾幕が反応）</label>
       </div>
 
-      <div id="sttOptions">
-        <label class="field">
-          音声認識エンジン
-          <select id="sttBackend">
-            <option value="local">ローカルWhisper（既定・無料・オフライン）</option>
-            <option value="openai">GPT Realtime Whisper（手動切替・高精度・従量課金）</option>
-          </select>
-        </label>
-        <label class="field" id="whisperModelField">
-          Whisperモデル
-          <select id="whisperModel">
-            <option value="Xenova/whisper-tiny">tiny（最速・粗い）</option>
-            <option value="Xenova/whisper-base">base（軽い）</option>
-            <option value="Xenova/whisper-small">small（推奨・精度◎）</option>
-            <option value="Xenova/whisper-medium">medium（高精度・重い）</option>
-          </select>
-        </label>
-        <div id="openaiKeyField">
-          <label class="field">
-            OpenAI APIキー（GPT Realtime Whisper）
-            <div class="secret-row">
-              <input
-                type="password"
-                id="openaiApiKey"
-                placeholder="sk-..."
-                autocomplete="off"
-                spellcheck="false"
-              />
-              <button type="button" id="saveOpenaiApiKey">保存</button>
-              <button type="button" id="clearOpenaiApiKey" class="ghost">削除</button>
-            </div>
-          </label>
-          <div id="openaiKeyStatus" class="hint"></div>
+      <div id="micDetails">
+        <div class="vu"><div id="vuBar"></div></div>
+        <div id="micInfo" class="hint">マイク未開始</div>
+
+        <div class="row">
+          <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こしして反応させる</label>
         </div>
-        <div id="sttInfo" class="hint"></div>
-        <div id="sttCost" class="hint cost"></div>
-        <div id="sttLog" class="sttlog"></div>
+
+        <div id="sttOptions">
+          <label class="field">
+            音声認識エンジン
+            <select id="sttBackend">
+              <option value="local">ローカルWhisper（既定・無料・オフライン）</option>
+              <option value="openai">GPT Realtime Whisper（手動切替・高精度・従量課金）</option>
+            </select>
+          </label>
+          <label class="field" id="whisperModelField">
+            Whisperモデル
+            <select id="whisperModel">
+              <option value="Xenova/whisper-tiny">tiny（最速・粗い）</option>
+              <option value="Xenova/whisper-base">base（軽い）</option>
+              <option value="Xenova/whisper-small">small（既定・推奨）</option>
+              <option value="Xenova/whisper-medium">medium（高精度・重い）</option>
+            </select>
+          </label>
+          <div id="openaiKeyField">
+            <label class="field">
+              OpenAI APIキー（GPT Realtime Whisper）
+              <div class="secret-row">
+                <input
+                  type="password"
+                  id="openaiApiKey"
+                  placeholder="sk-..."
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button type="button" id="saveOpenaiApiKey">保存</button>
+                <button type="button" id="clearOpenaiApiKey" class="ghost">削除</button>
+              </div>
+            </label>
+            <div id="openaiKeyStatus" class="hint"></div>
+          </div>
+          <div id="sttInfo" class="hint"></div>
+          <div id="sttCost" class="hint cost"></div>
+          <div id="sttLog" class="sttlog"></div>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- AIブレイン -->
-  <section class="brain">
-    <h2>🧠 AIブレイン</h2>
-    <label class="field">
-      ブレイン（画面を見て弾幕を生成）
-      <select id="brain">
-        <option value="codex">Codex（推奨・追加課金なし）</option>
-        <option value="anthropic">Claude（ANTHROPIC_API_KEY）</option>
-        <option value="mock">なし（フィラーのみ）</option>
-      </select>
-    </label>
-    <label class="field">
-      生成間隔: <span id="capLabel"></span>
-      <input type="range" id="captureIntervalMs" min="4000" max="20000" step="1000" />
-    </label>
-  </section>
+    <section class="brain">
+      <h2>AIブレイン</h2>
+      <label class="field">
+        ブレイン（画面を見て弾幕を生成）
+        <select id="brain">
+          <option value="codex">Codex（推奨・追加課金なし）</option>
+          <option value="anthropic">Claude（ANTHROPIC_API_KEY）</option>
+          <option value="mock">なし（フィラーのみ）</option>
+        </select>
+      </label>
+      <label class="field">
+        生成間隔: <span id="capLabel"></span>
+        <input type="range" id="captureIntervalMs" min="4000" max="20000" step="1000" />
+      </label>
+    </section>
 
-  <!-- 弾幕の出し方 -->
-  <section class="flow">
-    <h2>💬 弾幕の出し方</h2>
-    <label class="field">
-      反応バランス: <span id="vrLabel"></span>
-      <input type="range" id="voiceReactivity" min="0" max="100" step="5" />
-      <span class="hint">右=声に反応 / 左=画面に反応</span>
-    </label>
-    <div class="row">
-      <label><input type="checkbox" id="ambientEnabled" /> フィラー弾幕を追加（OFFでAI生成のみ）</label>
-    </div>
-    <label class="field" id="ambientField">
-      フィラー密度(/分): <span id="ambLabel"></span>
-      <input type="range" id="ambientPerMinute" min="0" max="120" step="5" />
-    </label>
-  </section>
+    <section class="flow">
+      <h2>弾幕の出し方</h2>
+      <label class="field">
+        反応バランス: <span id="vrLabel"></span>
+        <input type="range" id="voiceReactivity" min="0" max="100" step="5" />
+        <span class="hint">右=声に反応 / 左=画面に反応</span>
+      </label>
+      <div class="row">
+        <label><input type="checkbox" id="ambientEnabled" /> フィラー弾幕を追加（OFFでAI生成のみ）</label>
+      </div>
+      <label class="field" id="ambientField">
+        フィラー密度(/分): <span id="ambLabel"></span>
+        <input type="range" id="ambientPerMinute" min="0" max="120" step="5" />
+      </label>
+    </section>
 
-  <!-- 見た目（折りたたみ） -->
-  <section class="look">
-    <details>
-      <summary>🎨 弾幕の見た目</summary>
+    <section class="look">
+      <h2>弾幕の見た目</h2>
       <label class="field">
         流れる速さ: <span id="spdLabel"></span>
         <input type="range" id="speedMs" min="4000" max="14000" step="500" />
@@ -127,22 +123,25 @@
         不透明度: <span id="opLabel"></span>
         <input type="range" id="opacity" min="0.3" max="1" step="0.02" />
       </label>
-    </details>
-  </section>
+    </section>
 
-  <!-- テスト -->
-  <section class="test-sec">
-    <h2>🧪 テスト</h2>
-    <div class="test">
-      <input type="text" id="testText" placeholder="テスト弾幕を入力…" />
-      <button id="testBtn">流す</button>
-    </div>
-  </section>
+    <section class="test-sec">
+      <h2>テスト</h2>
+      <div class="test">
+        <input type="text" id="testText" placeholder="テスト弾幕を入力…" />
+        <button id="testBtn">流す</button>
+      </div>
+    </section>
 
-  <footer>
-    <p id="ctxInfo" class="hint"></p>
-    <p class="hint">F8: 配信ON/OFF ／ F7: この画面を最前面に ／ 弾幕はクリック透過</p>
-  </footer>
+    <footer>
+      <div class="status">
+        <span id="dot" class="dot"></span>
+        <span id="statusText">停止中</span>
+        <span id="brainBadge" class="badge">brain: -</span>
+      </div>
+      <p id="ctxInfo" class="hint"></p>
+    </footer>
+  </aside>
 
   <script src="control.js"></script>
 </body>

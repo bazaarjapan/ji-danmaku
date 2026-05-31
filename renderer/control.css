@@ -53,3 +53,22 @@ h2 { margin: 0 0 10px; font-size: 14px; color: var(--sub); font-weight: 600; }
 
 .hint { color: var(--sub); font-size: 11px; margin: 4px 0; }
 footer { margin-top: 4px; }
+
+/* 条件表示で隠す */
+.hidden { display: none !important; }
+
+/* mic詳細やSTTオプションの軽いネスト感 */
+#micDetails { margin-top: 6px; }
+#sttOptions { margin-top: 6px; padding-left: 10px; border-left: 2px solid #2a2e3a; }
+
+/* 折りたたみ（見た目詳細） */
+.look details > summary {
+  cursor: pointer; list-style: none; font-size: 14px; color: var(--sub);
+  font-weight: 600; padding: 2px 0; user-select: none;
+}
+.look details > summary::-webkit-details-marker { display: none; }
+.look details > summary::before { content: '▸ '; color: var(--sub); }
+.look details[open] > summary::before { content: '▾ '; }
+.look details[open] > summary { margin-bottom: 10px; }
+
+.row { margin: 6px 0; }

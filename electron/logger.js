@@ -7,7 +7,7 @@ const { CONFIG_DIR } = require('./config');
 const LOG_DIR = path.join(CONFIG_DIR, 'logs');
 const MAX_LOG_FILES = 14;
 
-let pruned = false;
+let lastPruneStamp = '';
 
 function todayStamp(date = new Date()) {
   return [
@@ -25,10 +25,11 @@ function logPath(date = new Date()) {
   return path.join(LOG_DIR, `ji-danmaku-${todayStamp(date)}.log`);
 }
 
-function ensureLogDir() {
+function ensureLogDir(date = new Date()) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  if (!pruned) {
-    pruned = true;
+  const stamp = todayStamp(date);
+  if (lastPruneStamp !== stamp) {
+    lastPruneStamp = stamp;
     pruneLogs();
   }
 }
@@ -74,14 +75,15 @@ function redact(value, key = '') {
 
 function write(level, event, details = {}) {
   try {
-    ensureLogDir();
+    const now = new Date();
+    ensureLogDir(now);
     const entry = {
-      at: new Date().toISOString(),
+      at: now.toISOString(),
       level,
       event,
       details: redact(details)
     };
-    fs.appendFileSync(logPath(), JSON.stringify(entry) + '\n', 'utf8');
+    fs.appendFileSync(logPath(now), JSON.stringify(entry) + '\n', 'utf8');
   } catch (e) {
     console.error('[logger] write failed:', e.message);
   }

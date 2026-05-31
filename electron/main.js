@@ -98,6 +98,23 @@ let micState = { level: 0, speaking: false, transcript: '' };
 let transcriptLog = [];    // 直近の発話ログ { text, at }（話題追従の文脈用）
 let lastBatchAt = 0;       // 直近の生成サイクル開始時刻（反応トリガのデバウンス用）
 let lastAiCommentAt = 0;   // 直近にAI弾幕を画面へ流した時刻（アンビエント抑制用）
+let runtimeDiagnostics = {
+  ai: {
+    status: 'idle',
+    requestedBrain: cfg.brain || 'codex',
+    source: '',
+    fallbackFrom: '',
+    lastError: '',
+    lastResult: '未実行',
+    updatedAt: 0
+  },
+  stt: {
+    status: cfg.sttEnabled ? 'idle' : 'muted',
+    backend: cfg.sttBackend || 'local',
+    message: cfg.sttEnabled ? '停止' : 'OFF',
+    updatedAt: 0
+  }
+};
 
 // ---- ウィンドウ生成 ----------------------------------------------------
 
@@ -205,7 +222,38 @@ function createControl() {
     }
   });
   controlWin.loadFile(path.join(__dirname, '..', 'renderer', 'control.html'));
+  controlWin.webContents.once('did-finish-load', () => {
+    sendControl('running', running);
+    sendControl('diagnostics', runtimeDiagnosticsSnapshot());
+  });
   controlWin.on('closed', () => { controlWin = null; });
+}
+
+function sendControl(channel, payload) {
+  if (controlWin && !controlWin.isDestroyed()) controlWin.webContents.send(channel, payload);
+}
+
+function stampRuntimePatch(patch) {
+  const at = Date.now();
+  const stamped = { ...(patch || {}) };
+  for (const key of ['ai', 'stt']) {
+    if (patch && patch[key]) stamped[key] = { ...patch[key], updatedAt: at };
+  }
+  return stamped;
+}
+
+function runtimeDiagnosticsSnapshot() {
+  const aiStatus = ai.status ? ai.status() : {};
+  return configStore.deepMerge(runtimeDiagnostics, {
+    codex: aiStatus.codex || {}
+  });
+}
+
+function updateRuntimeDiagnostics(patch) {
+  runtimeDiagnostics = configStore.deepMerge(runtimeDiagnostics, stampRuntimePatch(patch));
+  const snapshot = runtimeDiagnosticsSnapshot();
+  sendControl('diagnostics', snapshot);
+  return snapshot;
 }
 
 // コントロール画面を最前面に呼び出す（F7）。閉じていれば作り直す。
@@ -392,7 +440,17 @@ async function captureCycle() {
       idleStreak++;
       if (idleStreak >= (cfg.idleSkipAfter ?? 1)) {
         // 生成はスキップ。アンビエント弾幕は別ループで継続するので「無人」にはならない。
-        if (controlWin) controlWin.webContents.send('status', { idle: true, lastContext: context });
+        updateRuntimeDiagnostics({
+          ai: {
+            status: 'idle',
+            requestedBrain: cfg.brain || 'codex',
+            source: '',
+            fallbackFrom: '',
+            lastError: '',
+            lastResult: '画面変化なしでスキップ'
+          }
+        });
+        sendControl('status', { idle: true, lastContext: context });
         cycleBusy = false;
         return;
       }
@@ -424,15 +482,45 @@ async function captureCycle() {
       count = Math.round((cfg.commentsPerBatchScreen ?? 4) * (100 - vr) / 100);
       if (count < 1) {
         // 声100%(画面弾幕なし)設定で発話も無い → 今回は生成しない。
-        if (controlWin) controlWin.webContents.send('status', { idle: true, lastContext: context });
+        updateRuntimeDiagnostics({
+          ai: {
+            status: 'idle',
+            requestedBrain: cfg.brain || 'codex',
+            source: '',
+            fallbackFrom: '',
+            lastError: '',
+            lastResult: '声待ち'
+          }
+        });
+        sendControl('status', { idle: true, lastContext: context });
         return;   // cycleBusy 解除と reactivePending 処理は finally が行う
       }
     }
     const imageForGen = voiceOnly ? null : imagePath;   // 声100%はスクショを渡さない
-    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
+    updateRuntimeDiagnostics({
+      ai: {
+        status: 'generating',
+        requestedBrain: cfg.brain || 'codex',
+        source: '',
+        fallbackFrom: '',
+        lastError: '',
+        lastResult: '生成中'
+      }
+    });
+    const { source, comments, requestedBrain, fallbackFrom, error } = await ai.generateBatch(cfg, { context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (!running) return;
-    if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });
+    updateRuntimeDiagnostics({
+      ai: {
+        status: fallbackFrom ? 'fallback' : 'ready',
+        requestedBrain: requestedBrain || cfg.brain || 'codex',
+        source,
+        fallbackFrom: fallbackFrom || '',
+        lastError: error || '',
+        lastResult: `${source}: ${comments.length}件`
+      }
+    });
+    sendControl('status', { brain: source, idle: false, lastContext: context });
     enqueueDrip(comments);
   } finally {
     cycleBusy = false;
@@ -474,6 +562,21 @@ function startRunning() {
     captureIntervalMs: cfg.captureIntervalMs
   });
   setOverlayStyle();
+  updateRuntimeDiagnostics({
+    ai: {
+      status: 'generating',
+      requestedBrain: cfg.brain || 'codex',
+      source: '',
+      fallbackFrom: '',
+      lastError: '',
+      lastResult: '起動中'
+    },
+    stt: {
+      status: cfg.sttEnabled ? 'idle' : 'muted',
+      backend: cfg.sttBackend || 'local',
+      message: cfg.sttEnabled ? '待機' : 'OFF'
+    }
+  });
   captureCycle();
   captureTimer = setInterval(captureCycle, Math.max(3000, cfg.captureIntervalMs));
   ambientTick();
@@ -495,16 +598,32 @@ function stopRunning() {
   transcriptLog = [];
   prevSignature = null;
   idleStreak = 0;
+  updateRuntimeDiagnostics({
+    ai: {
+      status: 'idle',
+      requestedBrain: cfg.brain || 'codex',
+      source: '',
+      fallbackFrom: '',
+      lastError: '',
+      lastResult: '停止中'
+    },
+    stt: {
+      status: cfg.sttEnabled ? 'idle' : 'muted',
+      backend: cfg.sttBackend || 'local',
+      message: cfg.sttEnabled ? '停止' : 'OFF'
+    }
+  });
   broadcastRunning();
 }
 
 function broadcastRunning() {
-  if (controlWin) controlWin.webContents.send('running', running);
+  sendControl('running', running);
 }
 
 // ---- IPC ---------------------------------------------------------------
 
 ipcMain.handle('get-config', () => publicConfig());
+ipcMain.handle('get-runtime-diagnostics', () => runtimeDiagnosticsSnapshot());
 
 function configSummaryForDiagnostics() {
   const keyState = openAiApiKeyState();
@@ -565,7 +684,8 @@ function buildDiagnosticsText() {
       cycleBusy,
       reactivePending,
       idleStreak
-    }
+    },
+    runtimeDiagnostics: runtimeDiagnosticsSnapshot()
   });
   const lines = [
     'Ji-Danmaku Diagnostics',
@@ -613,6 +733,16 @@ ipcMain.handle('set-config', (_e, patch) => {
   // 音声認識バックエンド/モデルの変更を反映。openai以外に切替えたらWSを閉じる。
   configureOpenAiStt();
   if (cfg.sttBackend !== 'openai' || keyChanged || modelChanged) openaiStt.close();
+  updateRuntimeDiagnostics({
+    ai: {
+      requestedBrain: cfg.brain || 'codex'
+    },
+    stt: {
+      backend: cfg.sttBackend || 'local',
+      status: cfg.sttEnabled ? 'idle' : 'muted',
+      message: cfg.sttEnabled ? '待機' : 'OFF'
+    }
+  });
   // マルチモニター設定が変わったらオーバーレイを作り直す（スタイルは生成側で再送）。
   if (nextPatch && 'multiMonitor' in nextPatch && nextPatch.multiMonitor !== hadMulti) {
     createOverlays();
@@ -668,6 +798,13 @@ ipcMain.on('stt-utterance', async (e, audio) => {
   configureOpenAiStt();
   if (!openaiStt.isConfigured()) {
     logger.warn('stt.openai_key_missing');
+    updateRuntimeDiagnostics({
+      stt: {
+        status: 'error',
+        backend: 'openai',
+        message: 'OpenAI APIキー未設定'
+      }
+    });
     if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OpenAI APIキー未設定（コントロール画面で入力）' });
     return;
   }
@@ -681,12 +818,37 @@ ipcMain.on('stt-utterance', async (e, audio) => {
   }
   const usageUsd = (cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017);
   let text = '';
+  let error = '';
+  updateRuntimeDiagnostics({
+    stt: {
+      status: 'loading',
+      backend: 'openai',
+      message: 'GPT Realtime Whisperで解析中'
+    }
+  });
   try { text = await openaiStt.transcribe(audio); } catch (err) {
+    error = err.message;
     logger.warn('stt.openai_transcribe_failed', { message: err.message });
   }
-  if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text, usageUsd, usageMs: cfg.openaiUsageMs });
+  updateRuntimeDiagnostics({
+    stt: {
+      status: error ? 'error' : 'ready',
+      backend: 'openai',
+      message: error ? `GPT Realtime Whisperエラー: ${error}` : (text ? `認識: ${text.slice(0, 40)}` : '認識結果なし')
+    }
+  });
+  if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text, error, usageUsd, usageMs: cfg.openaiUsageMs });
 });
-ipcMain.on('stt-stop', () => { openaiStt.close(); });
+ipcMain.on('stt-stop', () => {
+  openaiStt.close();
+  updateRuntimeDiagnostics({
+    stt: {
+      status: cfg.sttEnabled ? 'idle' : 'muted',
+      backend: cfg.sttBackend || 'local',
+      message: cfg.sttEnabled ? '停止' : 'OFF'
+    }
+  });
+});
 
 // ---- アプリライフサイクル ----------------------------------------------
 

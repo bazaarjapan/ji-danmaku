@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-small';
 let cfg = null;
 let running = false;
+let runtimeDiagnostics = {};
 
 // 関係ない項目を隠して見やすくする。
 function show(id, on) { const el = $(id); if (el) el.classList.toggle('hidden', !on); }
@@ -47,6 +48,8 @@ async function init() {
       window.ji.sendContext(c);
     }
   });
+  window.ji.onDiagnostics(updateDiagnosticsPanel);
+  updateDiagnosticsPanel(await window.ji.getRuntimeDiagnostics());
 }
 
 function reflectConfig() {
@@ -190,6 +193,105 @@ function setSignal(cardId, textId, text, state = 'idle') {
   if (label) label.textContent = text;
 }
 
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeDiagnostics(base, patchData) {
+  const out = { ...(base || {}) };
+  for (const key of Object.keys(patchData || {})) {
+    if (isPlainObject(out[key]) && isPlainObject(patchData[key])) {
+      out[key] = mergeDiagnostics(out[key], patchData[key]);
+    } else {
+      out[key] = patchData[key];
+    }
+  }
+  return out;
+}
+
+function stateFromRuntime(status) {
+  if (status === 'generating' || status === 'loading') return 'loading';
+  if (status === 'fallback') return 'loading';
+  if (status === 'error') return 'error';
+  if (status === 'muted') return 'muted';
+  if (status === 'ready' || status === 'active') return 'ready';
+  return 'idle';
+}
+
+function setDiagSignal(rowId, textId, text, state = 'idle') {
+  const row = $(rowId);
+  const label = $(textId);
+  if (row) row.dataset.state = state;
+  if (label) label.textContent = text;
+}
+
+function secondsText(ms) {
+  const sec = Math.max(0, Math.ceil((ms || 0) / 1000));
+  return `${sec}秒`;
+}
+
+function updateLocalSttDiagnostics(text, state = 'idle') {
+  const status = state === 'loading'
+    ? 'loading'
+    : (state === 'error' ? 'error' : (state === 'muted' ? 'muted' : (state === 'ready' || state === 'active' ? 'ready' : 'idle')));
+  updateDiagnosticsPanel({
+    stt: {
+      status,
+      backend: cfg ? (cfg.sttBackend || 'local') : '',
+      message: text || '',
+      updatedAt: Date.now()
+    }
+  });
+}
+
+function updateDiagnosticsPanel(patchData) {
+  runtimeDiagnostics = mergeDiagnostics(runtimeDiagnostics, patchData || {});
+  renderDiagnosticsPanel();
+}
+
+function renderDiagnosticsPanel() {
+  const aiDiag = runtimeDiagnostics.ai || {};
+  const sttDiag = runtimeDiagnostics.stt || {};
+  const codexDiag = runtimeDiagnostics.codex || {};
+  const aiBrain = aiDiag.requestedBrain || (cfg && cfg.brain) || 'codex';
+  const aiText = aiDiag.status === 'generating'
+    ? `${aiBrain} 生成中`
+    : (aiDiag.lastResult || (running ? '待機' : '停止'));
+  setDiagSignal('diagAiRow', 'diagAiText', aiText, stateFromRuntime(aiDiag.status));
+
+  const fallbackText = aiDiag.fallbackFrom
+    ? `${aiDiag.fallbackFrom} -> ${aiDiag.source || 'mock'}`
+    : 'なし';
+  setDiagSignal('diagFallbackRow', 'diagFallbackText', fallbackText, aiDiag.fallbackFrom ? 'loading' : 'idle');
+
+  let codexText = '待機';
+  let codexState = 'idle';
+  if (codexDiag.backoffRemainingMs > 0) {
+    codexText = `バックオフ ${secondsText(codexDiag.backoffRemainingMs)}`;
+    codexState = 'error';
+  } else if (codexDiag.busy || (aiDiag.status === 'generating' && aiBrain === 'codex')) {
+    codexText = '生成中';
+    codexState = 'loading';
+  } else if (codexDiag.serverRunning) {
+    codexText = '接続中';
+    codexState = 'ready';
+  } else if (codexDiag.warned) {
+    codexText = '警告あり';
+    codexState = 'error';
+  }
+  setDiagSignal('diagCodexRow', 'diagCodexText', codexText, codexState);
+
+  const sttBackend = sttDiag.backend === 'openai' ? 'GPT' : 'Local';
+  const sttMessage = sttDiag.message || (cfg && cfg.sttEnabled ? '停止' : 'OFF');
+  setDiagSignal('diagSttRow', 'diagSttText', `${sttBackend}: ${sttMessage}`, stateFromRuntime(sttDiag.status));
+
+  const details = [];
+  if (aiDiag.lastError) details.push(aiDiag.lastError);
+  if (codexDiag.consecutiveFails) details.push(`Codex失敗 ${codexDiag.consecutiveFails}回`);
+  if (sttDiag.status === 'error' && sttDiag.message) details.push(sttDiag.message);
+  $('diagDetail').textContent = details.join(' / ').slice(0, 160);
+}
+
 function setMainRunStatus(isRunning) {
   $('mainStatusText').textContent = isRunning ? '弾幕稼働中' : '停止中';
   const badge = $('mainModeBadge');
@@ -204,6 +306,7 @@ function setMicStatus(text, state = 'idle') {
 
 function setSttStatus(text, state = 'idle') {
   setSignal('sttStateCard', 'sttStateText', text, state);
+  updateLocalSttDiagnostics(text, state);
 }
 
 function setWhisperStatus(shortText, detailText, state = 'idle', progress = 0) {

@@ -156,6 +156,50 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
   background: linear-gradient(90deg, var(--accent2), var(--ok));
   transition: width .2s ease;
 }
+.diag-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 11px;
+}
+.diag-row {
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #596071;
+  border-radius: 8px;
+  background: rgba(13, 15, 21, .62);
+}
+.diag-row span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--sub);
+  font-size: 10px;
+}
+.diag-row strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diag-row[data-state="active"],
+.diag-row[data-state="ready"] { border-left-color: var(--ok); }
+.diag-row[data-state="loading"] { border-left-color: var(--warn); }
+.diag-row[data-state="error"] { border-left-color: var(--danger); }
+.diag-row[data-state="muted"] { border-left-color: var(--accent2); }
+.diag-detail {
+  min-height: 16px;
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--sub);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .big-btn {
   width: 100%;

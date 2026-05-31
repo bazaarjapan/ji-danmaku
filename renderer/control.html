@@ -38,6 +38,25 @@
         <span id="whisperDetailText">スタートすると文字起こしを準備します</span>
         <div class="progress"><div id="whisperProgressBar"></div></div>
       </div>
+      <div class="diag-panel" aria-label="ライブ診断">
+        <div id="diagAiRow" class="diag-row" data-state="idle">
+          <span>AI生成</span>
+          <strong id="diagAiText">未実行</strong>
+        </div>
+        <div id="diagFallbackRow" class="diag-row" data-state="idle">
+          <span>フォールバック</span>
+          <strong id="diagFallbackText">なし</strong>
+        </div>
+        <div id="diagCodexRow" class="diag-row" data-state="idle">
+          <span>Codex</span>
+          <strong id="diagCodexText">待機</strong>
+        </div>
+        <div id="diagSttRow" class="diag-row" data-state="idle">
+          <span>STT</span>
+          <strong id="diagSttText">停止</strong>
+        </div>
+      </div>
+      <div id="diagDetail" class="diag-detail"></div>
     </div>
     <button id="toggle" class="big-btn off">▶ 字弾幕スタート</button>
     <div class="live-transcript" aria-live="polite">

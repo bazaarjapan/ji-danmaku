@@ -8,6 +8,7 @@ const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
 const openaiStt = require('./ai/openai-stt');
+const { dedupeAiComments, filterNgComments } = require('./comment-utils');
 
 // 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
 // 配布版ではコントロール画面からAPIキーを保存する。値はログに出さない。
@@ -227,24 +228,11 @@ function summonControl() {
 let recentAi = [];               // { n: 正規化テキスト, text: 原文, at: 時刻 }
 const RECENT_AI_TTL = 45000;     // 45秒以内は重複とみなす
 
-function normText(s) {
-  return String(s || '').toLowerCase().replace(/\s+/g, '').replace(/[。、!！?？w～~ー]+$/g, '');
-}
-
 // 'ai' バッチからバッチ内＋直近窓の重複を除去する。
 function dedupeAi(comments) {
-  const now = Date.now();
-  recentAi = recentAi.filter((r) => now - r.at < RECENT_AI_TTL);
-  const seen = new Set(recentAi.map((r) => r.n));
-  const out = [];
-  for (const c of comments) {
-    const n = normText(c.text);
-    if (!n || seen.has(n)) continue;
-    seen.add(n);
-    recentAi.push({ n, text: c.text, at: now });
-    out.push(c);
-  }
-  return out;
+  const result = dedupeAiComments(comments, recentAi, { ttlMs: RECENT_AI_TTL });
+  recentAi = result.recent;
+  return result.comments;
 }
 
 // 直前に出たAIコメント原文（プロンプトの反復抑制に渡す）。
@@ -268,21 +256,7 @@ function applyAccents(comments) {
 // NGワードフィルタ: 不適切語を含む弾幕を除外(drop)または伏字化(mask)。
 // 全弾幕(AI/ambient/voice/test)が通る sendComments で適用し、漏れをなくす。
 function filterNg(comments) {
-  const words = (cfg.ngWords || []).filter(Boolean);
-  if (!words.length) return comments;
-  const mask = cfg.ngMode === 'mask';
-  const out = [];
-  for (const c of comments) {
-    const t = c.text || '';
-    if (!words.some((w) => t.includes(w))) { out.push(c); continue; }
-    if (mask) {
-      let m = t;
-      for (const w of words) m = m.split(w).join('〇'.repeat([...w].length));
-      out.push({ ...c, text: m });
-    }
-    // drop: 何もpushしない（除外）
-  }
-  return out;
+  return filterNgComments(comments, cfg);
 }
 
 // 全オーバーレイ（各ディスプレイ）へ同じメッセージを配る。

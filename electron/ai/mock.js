@@ -4,31 +4,85 @@
 // ニコニコ動画でよく見るリアクションを中心に、文脈ワードを少し混ぜる。
 
 const REACTIONS = [
-  'www', 'wwwww', '草', '大草原', '888888', 'ぱちぱち', 'すごい', 'うまい',
-  'かわいい', 'kawaii', 'おお', 'まじか', 'ファッ!?', 'ええ…', 'いいね',
-  'ナイス', 'GJ', 'てえてえ', '尊い', 'すき', 'わかる', 'それな', 'はい優勝',
-  'ここすき', '神', '天才', 'プロやな', 'うおおおお', 'きたあああ', 'よき',
-  'おつ', 'おつかれ', 'ふむ', 'なるほど', '？？？', 'wktk', 'がんばれ',
-  'いいぞ', 'すこ', 'control room から失礼します', '初見です', 'ノシ'
+  // 笑い
+  'www', 'wwwww', 'ｗｗｗ', '草', '大草原', '草生える', '草不可避', '笑った',
+  'ツボったw', '腹いてえw', 'じわるw', 'なんでやねんw', '笑うわこんなん',
+  // 称賛・感心
+  'すごい', 'すごすぎ', 'うまい', 'お上手', '天才', '神', '神回', 'プロやん',
+  'さすがやな', 'レベル高い', 'ナイス', 'GJ', '偉い', '尊敬する', 'お見事',
+  'えぐいうまい', 'センスある',
+  // 共感・同意
+  'わかる', 'わかりみ', 'それな', 'たしかに', 'せやな', 'ほんそれ', '同意',
+  'まじでそれ', '完全に理解した', 'あるある',
+  // かわいい・尊い
+  'かわいい', 'kawaii', '尊い', 'てえてえ', 'すき', 'ぐうかわ', 'ほっこり', 'すこ',
+  // 驚き
+  'おお', 'まじか', 'ファッ!?', 'ええ…', 'うせやろ', 'なにそれ', 'びっくり',
+  'マ?', 'は、はやい', '初めて見た',
+  // 盛り上がり
+  '888888', 'ぱちぱち', 'うおおおお', 'きたあああ', '最高', '優勝', 'はい優勝',
+  '沸いた', 'テンション上がる', '盛り上がってきた', 'ここすき',
+  // まったり・雰囲気
+  'ふむ', 'なるほど', 'へえ', 'ほー', 'いいね', 'よき', '平和', '癒される',
+  'いい雰囲気', '落ち着く', 'BGMいいね', '作業用に最適', 'ずっと見てられる',
+  // 質問・実況的
+  'これ何してるの？', 'どうやるの？', '次どうするん？', 'なんでそうなった？',
+  '解説して〜', 'お、何か始まった', 'おっ', 'ここ大事そう',
+  // 視聴者ムーブ
+  '初見です', 'こんばんは', 'おつ', 'おつかれ', 'ノシ', 'wktk', 'がんばれ',
+  'いけぇ', 'どんまい', 'ナイスファイト', '見入ってる', '配信たのし'
 ];
 
+// 絵文字・顔文字（たまに流す）
+const EMOJI = ['👏', '🔥', '😂', '✨', '🎉', '💯', '😭', '👀', '🙌', '❤️',
+  '😆', '😳', '🥳', '👍', '🤣', '😍', '🥺', '💪', '🙏', '⭐', '🎏', '🌸',
+  '😎', '🤔', '😱', '🫶', '🥹'];
+const KAOMOJI = ['(°▽°)', '( ﾟдﾟ)', 'ｷﾀ━(ﾟ∀ﾟ)━!', '( ´∀｀)', '(๑˃̵ᴗ˂̵)',
+  '\\(^o^)/', '(；・∀・)', '( ˘ω˘)', '(ﾉ´∀`)ﾉ'];
+
 const TYPED_BY_KEYWORD = [
-  { re: /(code|vs ?code|cursor|terminal|powershell|cmd|\.js|\.ts|\.py)/i,
-    words: ['ｺｰﾄﾞ書いてる', 'エンジニアやん', 'バグはよ', 'console.log()', 'うごけ〜', 'コンパイル通れ', '天才プログラマー', 'リファクタしろ'] },
-  { re: /(youtube|video|動画|netflix|prime|映画)/i,
-    words: ['いいセンスw', 'これ好き', '音でかいw', 'うぽつ', '名作', 'タイムシフト勢'] },
-  { re: /(chrome|edge|firefox|browser|google|検索)/i,
-    words: ['ググってるw', '調べもの乙', 'タブ多すぎw', 'それ知りたい'] },
-  { re: /(game|ゲーム|steam|apex|valorant|minecraft|マイクラ)/i,
-    words: ['うまない！', 'GG', 'ナイスエイム', 'どんまい', 'いけぇ！', '神プレイ'] },
-  { re: /(slack|teams|discord|gmail|mail|メール|zoom|meet)/i,
-    words: ['お仕事お疲れさま', '会議多そう', '返信はよw', '社畜きたあ'] },
-  { re: /(excel|spreadsheet|sheet|スプレッド|notion|word|powerpoint|資料)/i,
-    words: ['事務作業えらい', '関数つよつよ', '資料神', 'がんばえ〜'] }
+  { re: /(code|vs ?code|cursor|terminal|powershell|cmd|\.js|\.ts|\.py|github|git)/i,
+    words: ['ｺｰﾄﾞ書いてる', 'エンジニアやん', 'バグはよ直して', 'console.log()', 'うごけ〜',
+      'コンパイル通れ', '天才プログラマー', 'リファクタしろw', 'インデント気になるw', 'コミットはよ',
+      'そのエラー見たことある', 'AIに聞こ？', 'プルリク出して', 'テスト書いた？', '動いた888'] },
+  { re: /(youtube|video|動画|netflix|prime|映画|配信|live)/i,
+    words: ['いいセンスw', 'これ好き', '音でかいw', 'うぽつ', '名作', 'タイムシフト勢',
+      'ここすこ', '神シーン', 'もう一回見たい', 'BGMなに？'] },
+  { re: /(chrome|edge|firefox|browser|google|検索|search)/i,
+    words: ['ググってるw', '調べもの乙', 'タブ多すぎw', 'それ知りたい', '検索うまいな',
+      'ブクマしとこ', 'サジェスト見えてるw'] },
+  { re: /(game|ゲーム|steam|apex|valorant|minecraft|マイクラ|fps|rpg)/i,
+    words: ['うまい！', 'GG', 'ナイスエイム', 'どんまい', 'いけぇ！', '神プレイ',
+      'そこ右！', 'おしい！', 'うまくなったな', 'ナイスムーブ'] },
+  { re: /(slack|teams|discord|gmail|mail|メール|zoom|meet|会議|chat)/i,
+    words: ['お仕事お疲れさま', '会議多そう', '返信はよw', '社畜きたあ', 'リモートいいな',
+      'メール多すぎw', 'お疲れさまです'] },
+  { re: /(excel|spreadsheet|sheet|スプレッド|notion|word|powerpoint|資料|doc)/i,
+    words: ['事務作業えらい', '関数つよつよ', '資料神', 'がんばえ〜', 'まとめ上手',
+      'そのショートカット便利', '見やすい資料'] },
+  { re: /(chatgpt|claude|gpt|ai|copilot|codex|llm|prompt)/i,
+    words: ['AI使いこなしてる', 'プロンプト上手い', 'AI時代やね', 'それAIに任せろw',
+      'すごい時代になった', 'AIくんがんばえ', '人間の仕事…'] },
+  { re: /(figma|photoshop|illustrator|canva|design|デザイン|blender)/i,
+    words: ['デザインセンスある', 'おしゃれ', '配色すき', 'プロの仕事', 'きれい〜', 'カッコいい'] },
+  { re: /(spotify|music|音楽|daw|ableton|cubase|bgm)/i,
+    words: ['この曲すき', '選曲ナイス', 'いい音', 'ノれる', 'プレイリスト教えて'] },
+  { re: /(twitter|x\.com|instagram|tiktok|sns|facebook)/i,
+    words: ['SNS監視乙w', 'バズってる？', 'いいね押しとくw', 'エゴサ中？'] }
 ];
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// 1件分のテキストを作る。たまに絵文字のみ/顔文字のみ、語尾に絵文字を添える。
+function genText(themed) {
+  const r = Math.random();
+  if (r < 0.12) return pick(EMOJI);                              // 絵文字のみ
+  if (r < 0.17) return pick(KAOMOJI);                            // 顔文字のみ
+  let text = themed.length && Math.random() < 0.4 ? pick(themed) : pick(REACTIONS);
+  if (Math.random() < 0.18) text += pick(EMOJI);                // 語尾に絵文字を添える
+  return text;
 }
 
 // context: { title, process } を渡すと文脈寄りのコメントが混ざる。
@@ -40,9 +94,7 @@ function generate(count, context = {}) {
   }
   const out = [];
   for (let i = 0; i < count; i++) {
-    // 文脈ワードがあれば 40% で採用、それ以外は汎用リアクション。
-    const text =
-      themed.length && Math.random() < 0.4 ? pick(themed) : pick(REACTIONS);
+    const text = genText(themed);
     out.push({ text, style: rollStyle(text) });
   }
   return out;

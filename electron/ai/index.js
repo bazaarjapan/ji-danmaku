@@ -8,7 +8,7 @@ const anthropic = require('./anthropic');
 const mock = require('./mock');
 
 // AI ブレインで弾幕バッチを生成。常に配列を返す（最悪 mock）。
-async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus }) {
+async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus, voiceOnly }) {
   const n = count || cfg.commentsPerBatch || 10;
   const brain = cfg.brain || 'codex';
 
@@ -16,7 +16,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
   try {
     if (brain === 'codex') {
       result = await codex.generate({
-        count: n, context, transcript, imagePath, recent, voiceFocus,
+        count: n, context, transcript, imagePath, recent, voiceFocus, voiceOnly,
         model: cfg.codex && cfg.codex.model,
         timeoutMs: cfg.codex && cfg.codex.timeoutMs,
         minIntervalMs: cfg.codex && cfg.codex.minIntervalMs,
@@ -25,7 +25,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
       });
     } else if (brain === 'anthropic') {
       result = await anthropic.generate({
-        count: n, context, transcript, imagePath, recent, voiceFocus,
+        count: n, context, transcript, imagePath, recent, voiceFocus, voiceOnly,
         model: cfg.anthropic && cfg.anthropic.model,
         maxTokens: cfg.anthropic && cfg.anthropic.maxTokens
       });

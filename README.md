@@ -163,4 +163,11 @@ renderer/
 
 ## 📄 ライセンス
 
-MIT
+Ji-Danmaku本体のソースコードは **MIT License** で公開しています。詳細は
+[`LICENSE`](./LICENSE) を参照してください。
+
+依存ライブラリ、Electron/Chromium、ローカルWhisperモデル、OpenAI APIなどには、
+それぞれのライセンスまたは利用規約が適用されます。詳細は
+[`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) を参照してください。
+
+GPT Realtime Whisperを利用する場合、利用者自身のOpenAI APIキーとOpenAIの利用条件・料金が適用されます。

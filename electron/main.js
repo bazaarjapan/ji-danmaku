@@ -507,6 +507,7 @@ function broadcastRunning() {
 ipcMain.handle('get-config', () => publicConfig());
 
 function configSummaryForDiagnostics() {
+  const keyState = openAiApiKeyState();
   return logger.redact({
     brain: cfg.brain,
     captureIntervalMs: cfg.captureIntervalMs,
@@ -535,7 +536,11 @@ function configSummaryForDiagnostics() {
       maxFailures: cfg.codex && cfg.codex.maxFailures,
       backoffMs: cfg.codex && cfg.codex.backoffMs
     },
-    openAiApiKeyState: openAiApiKeyState()
+    openAiKeyStatus: {
+      configured: keyState.openaiApiKeyConfigured,
+      source: keyState.openaiApiKeySource,
+      secureStorageAvailable: keyState.openaiApiKeyStorageAvailable
+    }
   });
 }
 

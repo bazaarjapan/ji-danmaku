@@ -29,3 +29,21 @@ test('redact masks secret-looking values in normal strings', () => {
 
   assert.equal(result, 'failed with key sk-*** and Bearer ***');
 });
+
+test('redact keeps safe diagnostic key status fields visible', () => {
+  const result = redact({
+    openAiKeyStatus: {
+      configured: true,
+      source: 'saved',
+      secureStorageAvailable: true
+    }
+  });
+
+  assert.deepEqual(result, {
+    openAiKeyStatus: {
+      configured: true,
+      source: 'saved',
+      secureStorageAvailable: true
+    }
+  });
+});

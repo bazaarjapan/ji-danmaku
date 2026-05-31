@@ -16,6 +16,9 @@
     "asar": false,
     "files": [
       "**/*",
+      "!.env",
+      "!.env.*",
+      "!dist/**",
       "!**/node_modules/onnxruntime-node/**",
       "!**/node_modules/sharp/**",
       "!**/node_modules/@img/**",

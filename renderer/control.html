@@ -53,6 +53,23 @@
             <option value="Xenova/whisper-medium">medium（高精度・重い）</option>
           </select>
         </label>
+        <div id="openaiKeyField">
+          <label class="field">
+            OpenAI APIキー（gpt-realtime-whisper）
+            <div class="secret-row">
+              <input
+                type="password"
+                id="openaiApiKey"
+                placeholder="sk-..."
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button type="button" id="saveOpenaiApiKey">保存</button>
+              <button type="button" id="clearOpenaiApiKey" class="ghost">削除</button>
+            </div>
+          </label>
+          <div id="openaiKeyStatus" class="hint"></div>
+        </div>
         <div id="sttInfo" class="hint"></div>
         <div id="sttCost" class="hint cost"></div>
         <div id="sttLog" class="sttlog"></div>

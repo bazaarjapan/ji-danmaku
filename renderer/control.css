@@ -51,6 +51,20 @@ h2 { margin: 0 0 10px; font-size: 14px; color: var(--sub); font-weight: 600; }
 .test input { flex: 1; padding: 9px; border-radius: 8px; background: #11131a; color: var(--ink); border: 1px solid #2a2e3a; }
 .test button { padding: 9px 14px; border: none; border-radius: 8px; background: var(--accent2); color: #06222e; font-weight: 700; cursor: pointer; }
 
+.secret-row { display: flex; gap: 6px; margin-top: 6px; }
+.secret-row input {
+  flex: 1; min-width: 0; padding: 7px; border-radius: 8px;
+  background: #11131a; color: var(--ink); border: 1px solid #2a2e3a;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.secret-row button {
+  flex: 0 0 auto; padding: 7px 10px; border: none; border-radius: 8px;
+  background: var(--accent2); color: #06222e; font-weight: 700; cursor: pointer;
+}
+.secret-row button.ghost { background: #2a2e3a; color: var(--ink); }
+#openaiKeyStatus.ok { color: var(--ok); }
+#openaiKeyStatus.warn { color: #ffd24d; }
+
 .hint { color: var(--sub); font-size: 11px; margin: 4px 0; }
 footer { margin-top: 4px; }
 

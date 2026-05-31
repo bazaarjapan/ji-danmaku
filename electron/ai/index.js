@@ -6,6 +6,7 @@
 const codex = require('./codex');
 const anthropic = require('./anthropic');
 const mock = require('./mock');
+const logger = require('../logger');
 
 // AI ブレインで弾幕バッチを生成。常に配列を返す（最悪 mock）。
 async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus, voiceOnly }) {
@@ -32,10 +33,14 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
     }
   } catch (e) {
     console.error('[ai] brain error:', e.message);
+    logger.error('ai.brain_error', { brain, message: e.message });
   }
 
   if (result && result.length) {
     return { source: brain, comments: result };
+  }
+  if (brain !== 'mock') {
+    logger.warn('ai.fallback_to_mock', { brain, count: n });
   }
   // フォールバック: 文脈を活かしたアンビエント
   return { source: 'mock', comments: mock.generate(n, context || {}) };

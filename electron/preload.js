@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('ji', {
   // 配信制御
   toggle: (on) => ipcRenderer.invoke('toggle', on),
   testComment: (text) => ipcRenderer.invoke('test-comment', text),
+  getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
+  exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
 
   // マイク状態送信（コントロール画面 → main）
   sendMic: (state) => ipcRenderer.send('mic', state),

@@ -71,10 +71,13 @@ const DEFAULTS = {
 
   // 音声認識バックエンド: 'local'(ローカルWhisper・無料) | 'openai'(クラウド・高精度・従量課金)。
   // 'openai' は発話の区切りごとに Realtime API(WebSocket)へ音声を送って文字起こしさせるので
-  // 「声に反応する間だけ課金」。文字起こし結果は既存どおりcodexへ渡す。要 .env.local の OPENAI_API_KEY。
+  // 「声に反応する間だけ課金」。APIキーはコントロール画面または開発用 .env.local で設定する。
   sttBackend: 'local',
-  // OpenAI Realtime 文字起こしモデル(最新)。gpt-realtime-whisper。
+  // OpenAI Realtime 文字起こしモデル。gpt-realtime-whisper。
   openaiSttModel: 'gpt-realtime-whisper',
+  // UIから保存したOpenAI APIキー。Electron safeStorageで暗号化したbase64文字列。
+  // 実キーはIPCレスポンスには返さない。
+  openaiApiKeyEncrypted: '',
   // OpenAI音声認識の概算単価($/分)。送った音声長×この値で従量課金を概算表示。
   openaiSttUsdPerMin: 0.017,
   // OpenAIへ送った音声の累計(ms)。概算コスト表示用に積算・保存される。

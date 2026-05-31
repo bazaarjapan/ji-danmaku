@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -9,8 +9,10 @@ const scr = require('./screen');
 const ai = require('./ai');
 const openaiStt = require('./ai/openai-stt');
 
-// .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。値はログに出さない。
+// 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
+// 配布版ではコントロール画面からAPIキーを保存する。値はログに出さない。
 function loadEnvLocal() {
+  if (app.isPackaged) return;
   try {
     const txt = fs.readFileSync(path.join(__dirname, '..', '.env.local'), 'utf8');
     for (const line of txt.split(/\r?\n/)) {
@@ -27,7 +29,58 @@ loadEnvLocal();
 let overlayWins = [];         // 各ディスプレイのオーバーレイ（マルチモニター対応）
 let controlWin = null;
 let cfg = configStore.load();
-openaiStt.configure(process.env.OPENAI_API_KEY, cfg.openaiSttModel);
+
+function canEncryptSecrets() {
+  try { return safeStorage.isEncryptionAvailable(); } catch { return false; }
+}
+
+function decryptOpenAiApiKey() {
+  if (!cfg.openaiApiKeyEncrypted || !canEncryptSecrets()) return '';
+  try {
+    return safeStorage.decryptString(Buffer.from(cfg.openaiApiKeyEncrypted, 'base64'));
+  } catch {
+    return '';
+  }
+}
+
+function storeOpenAiApiKey(value) {
+  const key = String(value || '').trim();
+  delete cfg.openaiApiKey; // 古い平文設定が残っていても保存時に落とす。
+  if (!key) {
+    cfg.openaiApiKeyEncrypted = '';
+    return;
+  }
+  if (!canEncryptSecrets()) {
+    throw new Error('この環境ではAPIキーを安全に保存できません');
+  }
+  cfg.openaiApiKeyEncrypted = safeStorage.encryptString(key).toString('base64');
+}
+
+function resolveOpenAiApiKey() {
+  return process.env.OPENAI_API_KEY || decryptOpenAiApiKey();
+}
+
+function openAiApiKeyState() {
+  const envConfigured = !!process.env.OPENAI_API_KEY;
+  const savedConfigured = !!decryptOpenAiApiKey();
+  return {
+    openaiApiKeyConfigured: envConfigured || savedConfigured,
+    openaiApiKeySource: envConfigured ? 'env' : (savedConfigured ? 'saved' : ''),
+    openaiApiKeyStorageAvailable: canEncryptSecrets()
+  };
+}
+
+function publicConfig() {
+  const out = { ...cfg };
+  delete out.openaiApiKey;
+  delete out.openaiApiKeyEncrypted;
+  return { ...out, ...openAiApiKeyState() };
+}
+
+function configureOpenAiStt() {
+  openaiStt.configure(resolveOpenAiApiKey(), cfg.openaiSttModel);
+}
+configureOpenAiStt();
 
 let running = false;          // 弾幕配信ON/OFF
 let captureTimer = null;      // AI生成ループ
@@ -460,17 +513,24 @@ function broadcastRunning() {
 
 // ---- IPC ---------------------------------------------------------------
 
-ipcMain.handle('get-config', () => cfg);
+ipcMain.handle('get-config', () => publicConfig());
 
 ipcMain.handle('set-config', (_e, patch) => {
   const hadMulti = cfg.multiMonitor;
-  cfg = configStore.deepMerge(cfg, patch || {});
+  const nextPatch = { ...(patch || {}) };
+  const keyChanged = Object.prototype.hasOwnProperty.call(nextPatch, 'openaiApiKey');
+  const modelChanged = Object.prototype.hasOwnProperty.call(nextPatch, 'openaiSttModel');
+  if (keyChanged) {
+    storeOpenAiApiKey(nextPatch.openaiApiKey);
+    delete nextPatch.openaiApiKey;
+  }
+  cfg = configStore.deepMerge(cfg, nextPatch);
   configStore.save(cfg);
   // 音声認識バックエンド/モデルの変更を反映。openai以外に切替えたらWSを閉じる。
-  openaiStt.configure(process.env.OPENAI_API_KEY, cfg.openaiSttModel);
-  if (cfg.sttBackend !== 'openai') openaiStt.close();
+  configureOpenAiStt();
+  if (cfg.sttBackend !== 'openai' || keyChanged || modelChanged) openaiStt.close();
   // マルチモニター設定が変わったらオーバーレイを作り直す（スタイルは生成側で再送）。
-  if (patch && 'multiMonitor' in patch && patch.multiMonitor !== hadMulti) {
+  if (nextPatch && 'multiMonitor' in nextPatch && nextPatch.multiMonitor !== hadMulti) {
     createOverlays();
   } else {
     setOverlayStyle();
@@ -480,7 +540,7 @@ ipcMain.handle('set-config', (_e, patch) => {
     clearInterval(captureTimer);
     captureTimer = setInterval(captureCycle, Math.max(3000, cfg.captureIntervalMs));
   }
-  return cfg;
+  return publicConfig();
 });
 
 ipcMain.handle('toggle', (_e, on) => {
@@ -521,8 +581,9 @@ ipcMain.on('context-cache', (_e, c) => { if (c) _lastContext = c; });
 // 'openai' バックエンド時: レンダラーの発話音声(Float32 24kHz)を Realtime で文字起こしして返す。
 ipcMain.on('stt-utterance', async (e, audio) => {
   if (cfg.sttBackend !== 'openai') return;
+  configureOpenAiStt();
   if (!openaiStt.isConfigured()) {
-    if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OPENAI_API_KEY未設定(.env.local)' });
+    if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OpenAI APIキー未設定（コントロール画面で入力）' });
     return;
   }
   // 送った音声長(24kHz)を課金対象として積算・保存し、概算コストを算出。
@@ -539,6 +600,7 @@ ipcMain.on('stt-stop', () => { openaiStt.close(); });
 // ---- アプリライフサイクル ----------------------------------------------
 
 app.whenReady().then(() => {
+  configureOpenAiStt();
   createOverlays();
   createControl();
 

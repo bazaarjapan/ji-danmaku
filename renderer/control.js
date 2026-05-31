@@ -14,6 +14,7 @@ function applyVisibility() {
   show('micDetails', mic);                       // マイクON時だけ音声詳細
   show('sttOptions', mic && stt);                // 文字起こしON時だけエンジン等
   show('whisperModelField', mic && stt && !openai); // ローカル時だけWhisperモデル
+  show('openaiKeyField', mic && stt && openai);  // OpenAI時だけAPIキー
   show('sttCost', mic && stt && openai);         // OpenAI時だけ概算コスト
   show('ambientField', filler);                  // フィラーON時だけ密度
 }
@@ -53,6 +54,8 @@ function reflectConfig() {
   $('sttEnabled').checked = !!cfg.sttEnabled;
   $('sttBackend').value = cfg.sttBackend || 'local';
   $('whisperModel').value = cfg.whisperModel;
+  $('openaiApiKey').value = '';
+  updateOpenAiKeyStatus();
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
   setSlider('voiceReactivity', cfg.voiceReactivity, (v) => `声:${v}% / 画面:${100 - v}%`, 'vrLabel');
   setSlider('ambientPerMinute', cfg.ambientPerMinute, (v) => v + '個', 'ambLabel');
@@ -109,8 +112,14 @@ function bindControls() {
     cfg.sttBackend = $('sttBackend').value;
     patch({ sttBackend: cfg.sttBackend });
     applyVisibility();  // OpenAI選択でWhisperモデルを隠す
+    updateOpenAiKeyStatus();
     // バックエンドで取り込みレートが変わるため、マイクごと再起動して反映。
     if (micStream) { stopMic(); startMic(); }
+  });
+  $('saveOpenaiApiKey').addEventListener('click', saveOpenAiKey);
+  $('clearOpenaiApiKey').addEventListener('click', clearOpenAiKey);
+  $('openaiApiKey').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveOpenAiKey();
   });
 
   for (const id of ['captureIntervalMs', 'voiceReactivity', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
@@ -128,10 +137,69 @@ let pendingPatch = {};
 function patch(p) {
   Object.assign(pendingPatch, p);
   clearTimeout(patchTimer);
-  patchTimer = setTimeout(async () => {
-    cfg = await window.ji.setConfig(pendingPatch);
-    pendingPatch = {};
-  }, 150);
+  patchTimer = setTimeout(() => { flushPatch(); }, 150);
+}
+
+async function flushPatch(extra = {}) {
+  clearTimeout(patchTimer);
+  patchTimer = null;
+  const merged = { ...pendingPatch, ...extra };
+  pendingPatch = {};
+  if (!Object.keys(merged).length) return cfg;
+  cfg = await window.ji.setConfig(merged);
+  return cfg;
+}
+
+function updateOpenAiKeyStatus(message, level) {
+  const el = $('openaiKeyStatus');
+  if (!el) return;
+  el.classList.remove('ok', 'warn');
+  if (level) el.classList.add(level);
+  if (message) {
+    el.textContent = message;
+    return;
+  }
+  if (cfg.openaiApiKeySource === 'env') {
+    el.classList.add('ok');
+    el.textContent = '環境変数 OPENAI_API_KEY を使用中';
+  } else if (cfg.openaiApiKeyConfigured) {
+    el.classList.add('ok');
+    el.textContent = '保存済みAPIキーを使用中';
+  } else if (!cfg.openaiApiKeyStorageAvailable) {
+    el.classList.add('warn');
+    el.textContent = 'この環境ではAPIキーを安全に保存できません';
+  } else {
+    el.classList.add('warn');
+    el.textContent = 'OpenAIを使う場合はAPIキーを保存してください';
+  }
+}
+
+async function saveOpenAiKey() {
+  const input = $('openaiApiKey');
+  const key = input.value.trim();
+  if (!key) {
+    updateOpenAiKeyStatus('APIキーを入力してください', 'warn');
+    return;
+  }
+  try {
+    cfg = await flushPatch({ openaiApiKey: key });
+    input.value = '';
+    updateOpenAiKeyStatus('APIキーを保存しました', 'ok');
+    if (isOpenAiStt()) restartStt();
+  } catch (e) {
+    updateOpenAiKeyStatus(e.message || 'APIキーの保存に失敗しました', 'warn');
+  }
+}
+
+async function clearOpenAiKey() {
+  try {
+    cfg = await flushPatch({ openaiApiKey: '' });
+    $('openaiApiKey').value = '';
+    updateOpenAiKeyStatus();
+    if (isOpenAiStt()) restartStt();
+  } catch (e) {
+    updateOpenAiKeyStatus(e.message || 'APIキーの削除に失敗しました', 'warn');
+  }
 }
 
 function setRunning(r) {
@@ -238,6 +306,11 @@ function startStt() {
 
   // OpenAIバックエンド: workerを使わず、発話ごとに main 経由で Realtime文字起こしへ。
   if (isOpenAiStt()) {
+    if (!cfg.openaiApiKeyConfigured) {
+      sttReady = false;
+      $('sttInfo').textContent = 'OpenAI APIキーを保存してください';
+      return;
+    }
     sttReady = true;
     $('sttInfo').textContent = '☁ OpenAI(gpt-realtime-whisper)で文字起こし';
     return;

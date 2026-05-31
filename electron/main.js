@@ -26,6 +26,12 @@ function loadEnvLocal() {
 }
 loadEnvLocal();
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+  process.exit(0);
+}
+
 let overlayWins = [];         // 各ディスプレイのオーバーレイ（マルチモニター対応）
 let controlWin = null;
 let cfg = configStore.load();
@@ -598,6 +604,16 @@ ipcMain.on('stt-utterance', async (e, audio) => {
 ipcMain.on('stt-stop', () => { openaiStt.close(); });
 
 // ---- アプリライフサイクル ----------------------------------------------
+
+function summonExistingInstance() {
+  if (app.isReady()) {
+    summonControl();
+    return;
+  }
+  app.whenReady().then(summonControl);
+}
+
+app.on('second-instance', summonExistingInstance);
 
 app.whenReady().then(() => {
   configureOpenAiStt();

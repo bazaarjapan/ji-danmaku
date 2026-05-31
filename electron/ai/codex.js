@@ -16,7 +16,7 @@ const { spawn } = require('child_process');
 
 const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
 
-function buildPrompt({ count, context, transcript, recent, voiceFocus }) {
+function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly }) {
   const ctxLine = context && (context.title || context.process)
     ? `前面アプリ: ${context.process || ''} / ウィンドウ: ${context.title || ''}`
     : '前面アプリ情報なし';
@@ -24,8 +24,16 @@ function buildPrompt({ count, context, transcript, recent, voiceFocus }) {
     ? `直前に流れたコメント(繰り返さず、別の切り口で): ${recent.slice(-12).join(' / ')}`
     : '';
 
-  // 発話あり=「声への反応」を主役に。発話なし=画面に控えめに反応。
-  const focus = (voiceFocus && transcript)
+  // voiceOnly=声100%は画面情報を一切使わず発言のみ。voiceFocus=声主役+画面補助。発話なし=画面のみ。
+  const focus = voiceOnly
+    ? [
+        `配信者の発話(自動文字起こし・誤認識を含む可能性あり): 「${transcript}」`,
+        '→ 画面は一切見ず、この【発言だけ】に視聴者として反応してください。',
+        '   文字を鵜呑みにせず文脈から意図を推測して反応(同意/ツッコミ/返答/笑い/共感)。',
+        '   意味が取れない時は一般的な相づち程度に留め、画面の話には触れないこと。',
+        '   オウム返しは正しく聞き取れたと思える時だけ。'
+      ]
+    : (voiceFocus && transcript)
     ? [
         `配信者の発話(自動文字起こし・誤認識を含む可能性あり): 「${transcript}」`,
         '→ これは音声認識の生テキストで、誤変換・聞き間違いが混じることがあります。',
@@ -57,7 +65,8 @@ function buildPrompt({ count, context, transcript, recent, voiceFocus }) {
     '- 煽り/誹謗中傷/不適切表現はNG。明るく楽しいノリ',
     '- たまに color(例 "#ff5b5b")/big:true/small:true/pos:"ue"・"shita" で変化を付ける(各1割以内)',
     '',
-    ctxLine,
+    // 声100%(voiceOnly)では画面文脈(前面アプリ名)も渡さない。
+    ...(voiceOnly ? [] : [ctxLine]),
     ...(avoidLine ? [avoidLine] : []),
     '',
     'ツールやコマンドは一切使わず、最終メッセージで以下の形の JSON だけを返す:',
@@ -243,7 +252,7 @@ function noteFailure(maxFailures, backoffMs) {
 }
 
 // 戻り値: [{ text, style:{color?,big?} }, ...]  失敗/抑制時は null（main側でmockへフォールバック）
-async function generate({ count, context, transcript, imagePath, recent, voiceFocus, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
   if (busy) return null;                                   // 多重実行を防止（main 側でもガード済み）
   const now = Date.now();
   if (now < backoffUntil) return null;                     // バックオフ中はスキップ
@@ -251,7 +260,7 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
   busy = true;
   lastGenAt = now;
   try {
-    const promptText = buildPrompt({ count, context, transcript, recent, voiceFocus });
+    const promptText = buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly });
     const text = await server.runTurn({ promptText, imagePath, model, timeoutMs });
     const parsed = extractJson(text || '');
     if (!parsed) {

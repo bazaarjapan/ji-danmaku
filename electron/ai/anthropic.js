@@ -17,7 +17,7 @@ const SYSTEM = [
   'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意),"small":true(任意),"pos":"ue"|"shita"(任意)}]}'
 ].join('');
 
-async function generate({ count, context, transcript, imagePath, recent, voiceFocus, model, maxTokens }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, model, maxTokens }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
@@ -29,13 +29,16 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
       source: { type: 'base64', media_type: 'image/png', data: b64 }
     });
   }
-  const ctx = context && (context.title || context.process)
+  // 声100%(voiceOnly)では画面文脈(前面アプリ名)も渡さない。
+  const ctx = (!voiceOnly && context && (context.title || context.process))
     ? `前面アプリ:${context.process || ''} ウィンドウ:${context.title || ''}` : '';
   const avoid = recent && recent.length
     ? ` 直前に流れたコメント(繰り返さず別の切り口で):${recent.slice(-12).join(' / ')}`
     : '';
-  // 発話あり=声への反応を主役に。発話なし=画面に控えめ。
-  const focus = (voiceFocus && transcript)
+  // voiceOnly=声100%は画面を一切使わず発言のみ。voiceFocus=声主役+画面補助。発話なし=画面のみ。
+  const focus = voiceOnly
+    ? `配信者の発話(自動文字起こし・誤認識あり): 「${transcript}」。画面は一切見ず、この発言だけに視聴者として反応(同意/ツッコミ/返答/笑い/共感)。文字を鵜呑みにせず意図を推測。意味が取れない時は一般的な相づち程度にし、画面の話には触れない。この発言への反応で弾幕を${count}個。`
+    : (voiceFocus && transcript)
     ? `配信者の発話(自動文字起こし・誤認識を含む可能性): 「${transcript}」。これは音声認識の生テキストで誤変換が混じることがある。文字を鵜呑みにせず、まず画面と文脈から実際に言いたかった意図を推測し、その意図に視聴者として反応(同意/ツッコミ/返答/笑い/共感)。意味が取れない時は画面の話題に寄せる。オウム返しは正しく聞き取れた時だけ。この発言への反応を主役に弾幕を${count}個。`
     : `配信者の発話は今ありません。画面の"今"に【控えめに】触れる弾幕を${count}個(出しすぎない)。`;
   content.push({

@@ -346,6 +346,8 @@ async function captureCycle() {
     const recent = recentAiTexts();
     // 発話があれば「声への反応」を主役に満度で、無ければ画面のみ控えめ(バランスで増減)で生成。
     const voiceFocus = !!transcript;
+    // 声100%: 画面(スクショ・ウィンドウ名)を一切渡さず、発言だけに反応する。
+    const voiceOnly = voiceFocus && vr >= 100;
     let count;
     if (voiceFocus) {
       count = cfg.commentsPerBatch || 10;
@@ -357,7 +359,8 @@ async function captureCycle() {
         return;   // cycleBusy 解除と reactivePending 処理は finally が行う
       }
     }
-    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus });
+    const imageForGen = voiceOnly ? null : imagePath;   // 声100%はスクショを渡さない
+    const { source, comments } = await ai.generateBatch(cfg, { context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (!running) return;
     if (controlWin) controlWin.webContents.send('status', { brain: source, idle: false, lastContext: context });

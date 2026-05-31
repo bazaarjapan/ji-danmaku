@@ -103,6 +103,8 @@ function bindControls() {
   $('testText').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') $('testBtn').click();
   });
+  $('copyDiagnostics').addEventListener('click', copyDiagnostics);
+  $('exportDiagnostics').addEventListener('click', exportDiagnostics);
 
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
   $('ambientEnabled').addEventListener('change', () => {
@@ -278,6 +280,33 @@ async function clearOpenAiKey() {
     if (isOpenAiStt()) restartStt();
   } catch (e) {
     updateOpenAiKeyStatus(e.message || 'APIキーの削除に失敗しました', 'warn');
+  }
+}
+
+function setDiagnosticsStatus(text, level) {
+  const el = $('diagnosticsStatus');
+  if (!el) return;
+  el.classList.remove('ok', 'warn');
+  if (level) el.classList.add(level);
+  el.textContent = text || '';
+}
+
+async function copyDiagnostics() {
+  try {
+    const result = await window.ji.getDiagnostics();
+    await navigator.clipboard.writeText(result.text);
+    setDiagnosticsStatus('診断情報をコピーしました', 'ok');
+  } catch (e) {
+    setDiagnosticsStatus(e.message || '診断情報のコピーに失敗しました', 'warn');
+  }
+}
+
+async function exportDiagnostics() {
+  try {
+    const result = await window.ji.exportDiagnostics();
+    setDiagnosticsStatus(`保存しました: ${result.file}`, 'ok');
+  } catch (e) {
+    setDiagnosticsStatus(e.message || '診断情報の保存に失敗しました', 'warn');
   }
 }
 

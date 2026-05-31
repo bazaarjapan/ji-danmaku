@@ -9,6 +9,7 @@ const scr = require('./screen');
 const ai = require('./ai');
 const openaiStt = require('./ai/openai-stt');
 const { dedupeAiComments, filterNgComments } = require('./comment-utils');
+const logger = require('./logger');
 
 // 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
 // 配布版ではコントロール画面からAPIキーを保存する。値はログに出さない。
@@ -36,6 +37,7 @@ if (!gotSingleInstanceLock) {
 let overlayWins = [];         // 各ディスプレイのオーバーレイ（マルチモニター対応）
 let controlWin = null;
 let cfg = configStore.load();
+logger.info('app.launch', { version: app.getVersion(), packaged: app.isPackaged, platform: process.platform });
 
 function canEncryptSecrets() {
   try { return safeStorage.isEncryptionAvailable(); } catch { return false; }
@@ -376,6 +378,7 @@ async function captureCycle() {
     if (shot) { imagePath = shot.file; signature = shot.signature; }
   } catch (e) {
     console.error('[capture] screenshot失敗:', e.message);
+    logger.warn('capture.screenshot_failed', { message: e.message });
   }
 
   const speaking = micState.speaking;
@@ -463,6 +466,13 @@ function lastContext() { return _lastContext; }
 function startRunning() {
   if (running) return;
   running = true;
+  logger.info('danmaku.start', {
+    brain: cfg.brain,
+    sttBackend: cfg.sttBackend,
+    micEnabled: cfg.micEnabled,
+    sttEnabled: cfg.sttEnabled,
+    captureIntervalMs: cfg.captureIntervalMs
+  });
   setOverlayStyle();
   captureCycle();
   captureTimer = setInterval(captureCycle, Math.max(3000, cfg.captureIntervalMs));
@@ -472,6 +482,7 @@ function startRunning() {
 
 function stopRunning() {
   running = false;
+  logger.info('danmaku.stop');
   clearInterval(captureTimer); captureTimer = null;
   clearTimeout(ambientTimer); ambientTimer = null;
   clearTimeout(dripTimer); dripTimer = null;
@@ -495,6 +506,98 @@ function broadcastRunning() {
 
 ipcMain.handle('get-config', () => publicConfig());
 
+function configSummaryForDiagnostics() {
+  const keyState = openAiApiKeyState();
+  return logger.redact({
+    brain: cfg.brain,
+    captureIntervalMs: cfg.captureIntervalMs,
+    commentsPerBatch: cfg.commentsPerBatch,
+    commentsPerBatchScreen: cfg.commentsPerBatchScreen,
+    voiceReactivity: cfg.voiceReactivity,
+    ambientEnabled: cfg.ambientEnabled,
+    ambientPerMinute: cfg.ambientPerMinute,
+    multiMonitor: cfg.multiMonitor,
+    captureDisplayIndex: cfg.captureDisplayIndex,
+    overlayContentProtection: cfg.overlayContentProtection,
+    idleDetection: cfg.idleDetection,
+    micEnabled: cfg.micEnabled,
+    micThreshold: cfg.micThreshold,
+    sttEnabled: cfg.sttEnabled,
+    sttBackend: cfg.sttBackend,
+    whisperModel: cfg.whisperModel,
+    openaiSttModel: cfg.openaiSttModel,
+    openaiUsageMs: cfg.openaiUsageMs,
+    ngMode: cfg.ngMode,
+    ngWordsCount: Array.isArray(cfg.ngWords) ? cfg.ngWords.length : 0,
+    codex: {
+      model: cfg.codex && cfg.codex.model ? '<configured>' : '',
+      timeoutMs: cfg.codex && cfg.codex.timeoutMs,
+      minIntervalMs: cfg.codex && cfg.codex.minIntervalMs,
+      maxFailures: cfg.codex && cfg.codex.maxFailures,
+      backoffMs: cfg.codex && cfg.codex.backoffMs
+    },
+    openAiKeyStatus: {
+      configured: keyState.openaiApiKeyConfigured,
+      source: keyState.openaiApiKeySource,
+      secureStorageAvailable: keyState.openaiApiKeyStorageAvailable
+    }
+  });
+}
+
+function buildDiagnosticsText() {
+  const state = logger.redact({
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    running,
+    overlayWindows: overlayWins.filter((w) => w && !w.isDestroyed()).length,
+    controlWindowOpen: !!(controlWin && !controlWin.isDestroyed()),
+    lastContext: _lastContext,
+    micState: {
+      level: micState.level,
+      speaking: micState.speaking,
+      hasTranscript: !!micState.transcript,
+      transcriptAt: micState.transcriptAt
+    },
+    queue: {
+      dripQueue: dripQueue.length,
+      cycleBusy,
+      reactivePending,
+      idleStreak
+    }
+  });
+  const lines = [
+    'Ji-Danmaku Diagnostics',
+    `GeneratedAt: ${new Date().toISOString()}`,
+    `ConfigPath: ${configStore.CONFIG_PATH}`,
+    `LogDir: ${logger.LOG_DIR}`,
+    '',
+    'State:',
+    JSON.stringify(state, null, 2),
+    '',
+    'ConfigSummary:',
+    JSON.stringify(configSummaryForDiagnostics(), null, 2),
+    '',
+    'RecentLogs:',
+    ...logger.readRecentLines(80)
+  ];
+  return logger.redact(lines.join('\n'));
+}
+
+ipcMain.handle('get-diagnostics', () => {
+  const text = buildDiagnosticsText();
+  logger.info('diagnostics.copy_requested');
+  return { text, logDir: logger.LOG_DIR };
+});
+
+ipcMain.handle('export-diagnostics', () => {
+  const text = buildDiagnosticsText();
+  const file = logger.writeDiagnostics(text);
+  logger.info('diagnostics.exported', { file });
+  return { text, file };
+});
+
 ipcMain.handle('set-config', (_e, patch) => {
   const hadMulti = cfg.multiMonitor;
   const nextPatch = { ...(patch || {}) };
@@ -505,7 +608,8 @@ ipcMain.handle('set-config', (_e, patch) => {
     delete nextPatch.openaiApiKey;
   }
   cfg = configStore.deepMerge(cfg, nextPatch);
-  configStore.save(cfg);
+  const saved = configStore.save(cfg);
+  if (!saved) logger.error('config.save_failed', { keys: Object.keys(nextPatch) });
   // 音声認識バックエンド/モデルの変更を反映。openai以外に切替えたらWSを閉じる。
   configureOpenAiStt();
   if (cfg.sttBackend !== 'openai' || keyChanged || modelChanged) openaiStt.close();
@@ -563,16 +667,23 @@ ipcMain.on('stt-utterance', async (e, audio) => {
   if (cfg.sttBackend !== 'openai') return;
   configureOpenAiStt();
   if (!openaiStt.isConfigured()) {
+    logger.warn('stt.openai_key_missing');
     if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OpenAI APIキー未設定（コントロール画面で入力）' });
     return;
   }
   // 送った音声長(24kHz)を課金対象として積算・保存し、概算コストを算出。
   const ms = audio && audio.length ? Math.round((audio.length / 24000) * 1000) : 0;
   cfg.openaiUsageMs = (cfg.openaiUsageMs || 0) + ms;
-  try { configStore.save(cfg); } catch {}
+  try {
+    if (!configStore.save(cfg)) logger.error('config.save_failed', { source: 'openaiUsageMs' });
+  } catch (err) {
+    logger.error('config.save_failed', { source: 'openaiUsageMs', message: err.message });
+  }
   const usageUsd = (cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017);
   let text = '';
-  try { text = await openaiStt.transcribe(audio); } catch {}
+  try { text = await openaiStt.transcribe(audio); } catch (err) {
+    logger.warn('stt.openai_transcribe_failed', { message: err.message });
+  }
   if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text, usageUsd, usageMs: cfg.openaiUsageMs });
 });
 ipcMain.on('stt-stop', () => { openaiStt.close(); });
@@ -580,6 +691,7 @@ ipcMain.on('stt-stop', () => { openaiStt.close(); });
 // ---- アプリライフサイクル ----------------------------------------------
 
 function summonExistingInstance() {
+  logger.info('app.second_instance');
   if (app.isReady()) {
     summonControl();
     return;
@@ -590,6 +702,7 @@ function summonExistingInstance() {
 app.on('second-instance', summonExistingInstance);
 
 app.whenReady().then(() => {
+  logger.info('app.ready');
   configureOpenAiStt();
   createOverlays();
   createControl();
@@ -617,6 +730,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  logger.info('app.will_quit');
   globalShortcut.unregisterAll();
   try { require('./ai/codex').shutdown(); } catch {}
   try { openaiStt.close(); } catch {}

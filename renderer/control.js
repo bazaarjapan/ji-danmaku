@@ -14,6 +14,7 @@ function applyVisibility() {
   show('micDetails', mic);                       // マイクON時だけ音声詳細
   show('sttOptions', mic && stt);                // 文字起こしON時だけエンジン等
   show('whisperModelField', mic && stt && !openai); // ローカル時だけWhisperモデル
+  show('sttCost', mic && stt && openai);         // OpenAI時だけ概算コスト
   show('ambientField', filler);                  // フィラーON時だけ密度
 }
 
@@ -58,6 +59,8 @@ function reflectConfig() {
   setSlider('speedMs', cfg.speedMs, (v) => (v / 1000).toFixed(1) + '秒', 'spdLabel');
   setSlider('fontSize', cfg.fontSize, (v) => v + 'px', 'fsLabel');
   setSlider('opacity', cfg.opacity, (v) => Math.round(v * 100) + '%', 'opLabel');
+  // 起動時に累計の概算コストを表示。
+  updateCost((cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017), cfg.openaiUsageMs);
 }
 
 function setSlider(id, val, fmt, labelId) {
@@ -259,10 +262,7 @@ function startStt() {
       $('sttInfo').textContent = `🧠 Whisper準備OK（${m.device || 'wasm'}・発話を文字起こし中）`;
     } else if (m.type === 'result') {
       sttBusy = false;
-      if (m.text) {
-        lastTranscript = m.text.slice(-120);
-        $('sttInfo').textContent = '認識: ' + lastTranscript;
-      }
+      if (m.text) { lastTranscript = m.text.slice(-120); pushRecognized(m.text); }
     } else if (m.type === 'skipped') {
       sttBusy = false;
     } else if (m.type === 'error') {
@@ -290,10 +290,26 @@ function handleSttResult(r) {
   sttBusy = false;
   if (!r) return;
   if (r.error) { $('sttInfo').textContent = 'OpenAI STTエラー: ' + r.error; return; }
-  if (r.text) {
-    lastTranscript = r.text.slice(-120);
-    $('sttInfo').textContent = '認識: ' + lastTranscript;
-  }
+  if (typeof r.usageUsd === 'number') updateCost(r.usageUsd, r.usageMs);
+  if (r.text) { lastTranscript = r.text.slice(-120); pushRecognized(r.text); }
+}
+
+// OpenAI従量課金の概算表示（累計）。
+function updateCost(usd, ms) {
+  const sec = Math.round((ms || 0) / 1000);
+  const mm = Math.floor(sec / 60), ss = sec % 60;
+  $('sttCost').textContent = `☁ OpenAI概算: $${(usd || 0).toFixed(4)}（累計 ${mm}分${ss}秒）`;
+}
+
+// どう聞き取ったか（認識テキスト）を直近6件まで履歴表示。
+function pushRecognized(text) {
+  const log = $('sttLog');
+  if (!log || !text) return;
+  const div = document.createElement('div');
+  div.className = 'rec';
+  div.textContent = '🗣 ' + text;
+  log.prepend(div);
+  while (log.children.length > 6) log.removeChild(log.lastChild);
 }
 
 // 設定変更でモデルを切り替えるときの再起動。

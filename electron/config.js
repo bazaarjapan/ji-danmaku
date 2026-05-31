@@ -75,6 +75,10 @@ const DEFAULTS = {
   sttBackend: 'local',
   // OpenAI Realtime 文字起こしモデル(最新)。gpt-realtime-whisper。
   openaiSttModel: 'gpt-realtime-whisper',
+  // OpenAI音声認識の概算単価($/分)。送った音声長×この値で従量課金を概算表示。
+  openaiSttUsdPerMin: 0.017,
+  // OpenAIへ送った音声の累計(ms)。概算コスト表示用に積算・保存される。
+  openaiUsageMs: 0,
   // Whisperモデル: tiny=最速/粗い, base=軽い, small=精度と速度のバランス(推奨),
   // medium=高精度だが重い(WebGPU推奨)。日本語は base だと弱いので既定は small。
   whisperModel: 'Xenova/whisper-small',

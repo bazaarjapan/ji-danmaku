@@ -72,3 +72,11 @@ footer { margin-top: 4px; }
 .look details[open] > summary { margin-bottom: 10px; }
 
 .row { margin: 6px 0; }
+
+/* OpenAI概算コスト */
+.cost { color: #ffd24d; font-weight: 600; }
+
+/* 認識テキストの履歴 */
+.sttlog { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; max-height: 132px; overflow-y: auto; }
+.sttlog .rec { font-size: 12px; color: var(--sub); background: #11131a; border-radius: 6px; padding: 4px 8px; }
+.sttlog .rec:first-child { color: var(--ink); border-left: 2px solid var(--accent2); }

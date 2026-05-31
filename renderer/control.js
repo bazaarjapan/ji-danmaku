@@ -14,8 +14,8 @@ function applyVisibility() {
   show('micDetails', mic);                       // マイクON時だけ音声詳細
   show('sttOptions', mic && stt);                // 文字起こしON時だけエンジン等
   show('whisperModelField', mic && stt && !openai); // ローカル時だけWhisperモデル
-  show('openaiKeyField', mic && stt && openai);  // OpenAI時だけAPIキー
-  show('sttCost', mic && stt && openai);         // OpenAI時だけ概算コスト
+  show('openaiKeyField', mic && stt && openai);  // GPT Realtime Whisper時だけAPIキー
+  show('sttCost', mic && stt && openai);         // GPT Realtime Whisper時だけ概算コスト
   show('ambientField', filler);                  // フィラーON時だけ密度
 }
 
@@ -111,7 +111,7 @@ function bindControls() {
   $('sttBackend').addEventListener('change', () => {
     cfg.sttBackend = $('sttBackend').value;
     patch({ sttBackend: cfg.sttBackend });
-    applyVisibility();  // OpenAI選択でWhisperモデルを隠す
+    applyVisibility();  // GPT Realtime Whisper選択でWhisperモデルを隠す
     updateOpenAiKeyStatus();
     // バックエンドで取り込みレートが変わるため、マイクごと再起動して反映。
     if (micStream) { stopMic(); startMic(); }
@@ -170,7 +170,7 @@ function updateOpenAiKeyStatus(message, level) {
     el.textContent = 'この環境ではAPIキーを安全に保存できません';
   } else {
     el.classList.add('warn');
-    el.textContent = 'OpenAIを使う場合はAPIキーを保存してください';
+    el.textContent = 'GPT Realtime Whisperを使う場合はAPIキーを保存してください';
   }
 }
 
@@ -220,7 +220,7 @@ function setRunning(r) {
 let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null;
 let lastTranscript = '', speaking = false, speakDecay = 0;
 
-// 取り込みサンプルレート: ローカルWhisperは16kHz、OpenAI Realtimeは24kHz。
+// 取り込みサンプルレート: ローカルWhisperは16kHz、GPT Realtime Whisperは24kHz。
 let sttSR = 16000;
 const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ
 const STT_PREROLL_CHUNKS = 2;            // 発話の頭欠けを防ぐため直前(約0.5s)を含める
@@ -304,15 +304,15 @@ function startStt() {
   sttReady = false; sttBusy = false; sttActive = true;
   utterChunks = []; utterLen = 0; silentChunks = 0; preRoll = [];
 
-  // OpenAIバックエンド: workerを使わず、発話ごとに main 経由で Realtime文字起こしへ。
+  // GPT Realtime Whisperバックエンド: workerを使わず、発話ごとに main 経由で Realtime文字起こしへ。
   if (isOpenAiStt()) {
     if (!cfg.openaiApiKeyConfigured) {
       sttReady = false;
-      $('sttInfo').textContent = 'OpenAI APIキーを保存してください';
+      $('sttInfo').textContent = 'GPT Realtime Whisper用のOpenAI APIキーを保存してください';
       return;
     }
     sttReady = true;
-    $('sttInfo').textContent = '☁ OpenAI(gpt-realtime-whisper)で文字起こし';
+    $('sttInfo').textContent = '☁ GPT Realtime Whisperで文字起こし';
     return;
   }
 
@@ -362,7 +362,7 @@ function stopStt() {
 function handleSttResult(r) {
   sttBusy = false;
   if (!r) return;
-  if (r.error) { $('sttInfo').textContent = 'OpenAI STTエラー: ' + r.error; return; }
+  if (r.error) { $('sttInfo').textContent = 'GPT Realtime Whisperエラー: ' + r.error; return; }
   if (typeof r.usageUsd === 'number') updateCost(r.usageUsd, r.usageMs);
   if (r.text) { lastTranscript = r.text.slice(-120); pushRecognized(r.text); }
 }

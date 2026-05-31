@@ -69,7 +69,7 @@ const DEFAULTS = {
   // 初回のみモデルをDL(baseで約150MB)→以降はキャッシュからオフライン動作。
   sttEnabled: true,
 
-  // 音声認識バックエンド: 'local'(ローカルWhisper・無料) | 'openai'(クラウド・高精度・従量課金)。
+  // 音声認識バックエンド: 'local'(既定/ローカルWhisper・無料) | 'openai'(GPT Realtime Whisper・従量課金)。
   // 'openai' は発話の区切りごとに Realtime API(WebSocket)へ音声を送って文字起こしさせるので
   // 「声に反応する間だけ課金」。APIキーはコントロール画面または開発用 .env.local で設定する。
   sttBackend: 'local',

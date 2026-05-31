@@ -525,9 +525,14 @@ ipcMain.on('stt-utterance', async (e, audio) => {
     if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OPENAI_API_KEY未設定(.env.local)' });
     return;
   }
+  // 送った音声長(24kHz)を課金対象として積算・保存し、概算コストを算出。
+  const ms = audio && audio.length ? Math.round((audio.length / 24000) * 1000) : 0;
+  cfg.openaiUsageMs = (cfg.openaiUsageMs || 0) + ms;
+  try { configStore.save(cfg); } catch {}
+  const usageUsd = (cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017);
   let text = '';
   try { text = await openaiStt.transcribe(audio); } catch {}
-  if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text });
+  if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text, usageUsd, usageMs: cfg.openaiUsageMs });
 });
 ipcMain.on('stt-stop', () => { openaiStt.close(); });
 

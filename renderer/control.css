@@ -72,6 +72,33 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
 .big-btn:active { transform: scale(0.98); }
 .big-btn.on { background: linear-gradient(135deg, #ff4d4d, #c0392b); }
 
+.live-transcript {
+  width: 100%;
+  min-height: 88px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11131a;
+}
+.live-transcript span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--sub);
+  font-size: 11px;
+}
+.live-transcript p {
+  display: -webkit-box;
+  min-height: 44px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.45;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
 .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }

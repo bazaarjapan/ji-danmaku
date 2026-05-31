@@ -399,8 +399,15 @@ function updateCost(usd, ms) {
   $('sttCost').textContent = `☁ OpenAI概算: $${(usd || 0).toFixed(4)}（累計 ${mm}分${ss}秒）`;
 }
 
+function updateMainTranscript(text) {
+  const el = $('mainTranscript');
+  if (!el || !text) return;
+  el.textContent = text;
+}
+
 // どう聞き取ったか（認識テキスト）を直近6件まで履歴表示。
 function pushRecognized(text) {
+  updateMainTranscript(text);
   const log = $('sttLog');
   if (!log || !text) return;
   const div = document.createElement('div');

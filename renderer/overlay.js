@@ -138,6 +138,13 @@ function spawn(comment) {
   setTimeout(cleanup, duration + 500);
 }
 
+function clearDanmaku() {
+  for (const child of Array.from(stage.children)) child._done = true;
+  stage.replaceChildren();
+  onScreen = 0;
+  rebuildLanes();
+}
+
 // ---- IPC 受信 ----------------------------------------------------------
 
 window.ji.onStyle((s) => {
@@ -149,3 +156,5 @@ window.ji.onDanmaku(({ comments }) => {
   if (!comments) return;
   for (const c of comments) spawn(c);
 });
+
+window.ji.onClearDanmaku(clearDanmaku);

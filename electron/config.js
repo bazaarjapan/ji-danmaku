@@ -52,6 +52,18 @@ const DEFAULTS = {
   // true: 常に有効 / false: 常に無効。
   overlayContentProtection: 'auto',
 
+  // プライバシー除外: 一致する前面ウィンドウではスクリーンショットもAI生成も止める。
+  privacyExclusions: {
+    enabled: true,
+    // ProcessName は .exe 無し・大小文字無視で完全一致。
+    processNames: ['1Password', 'Bitwarden', 'KeePass', 'KeePassXC'],
+    // タイトルは部分一致。具体的すぎる個人情報は入れず、一般的な秘密入力画面だけを既定にする。
+    titlePatterns: ['password', 'パスワード', 'secret', 'ログイン', 'サインイン', '認証', '2FA']
+  },
+
+  // すぐに弾幕・キャプチャ・マイク監視を止める緊急停止キー。
+  emergencyStopShortcut: 'F9',
+
   // アイドル検知: 画面が変化せず発話も無いときAI生成をスキップしてコストを抑える。
   idleDetection: true,
   // 画面署名の平均絶対差がこの値未満なら「変化なし」とみなす(0-255、小さいほど敏感)。

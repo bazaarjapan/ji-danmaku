@@ -57,6 +57,7 @@
         </div>
       </div>
       <div id="diagDetail" class="diag-detail"></div>
+      <div id="privacyNotice" class="privacy-notice hidden"></div>
     </div>
     <button id="toggle" class="big-btn off">▶ 字弾幕スタート</button>
     <div class="live-transcript" aria-live="polite">
@@ -173,6 +174,26 @@
         不透明度: <span id="opLabel"></span>
         <input type="range" id="opacity" min="0.3" max="1" step="0.02" />
       </label>
+    </section>
+
+    <section class="privacy-sec">
+      <h2>プライバシー・緊急停止</h2>
+      <div class="row">
+        <label><input type="checkbox" id="privacyExclusionsEnabled" /> 除外ルールを有効にする</label>
+      </div>
+      <label class="field">
+        除外プロセス名
+        <textarea id="privacyProcessNames" rows="4" spellcheck="false"></textarea>
+      </label>
+      <label class="field">
+        除外タイトル
+        <textarea id="privacyTitlePatterns" rows="4" spellcheck="false"></textarea>
+      </label>
+      <div class="emergency-row">
+        <span>ショートカット <strong id="emergencyShortcut">F9</strong></span>
+        <button id="emergencyStop" type="button">緊急停止</button>
+      </div>
+      <div id="emergencyStatus" class="hint"></div>
     </section>
 
     <section class="test-sec">

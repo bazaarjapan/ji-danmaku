@@ -10,6 +10,7 @@ const ai = require('./ai');
 const openaiStt = require('./ai/openai-stt');
 const { dedupeAiComments, filterNgComments } = require('./comment-utils');
 const logger = require('./logger');
+const privacyRules = require('./privacy-rules');
 
 // 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
 // 配布版ではコントロール画面からAPIキーを保存する。値はログに出さない。
@@ -98,6 +99,7 @@ let micState = { level: 0, speaking: false, transcript: '' };
 let transcriptLog = [];    // 直近の発話ログ { text, at }（話題追従の文脈用）
 let lastBatchAt = 0;       // 直近の生成サイクル開始時刻（反応トリガのデバウンス用）
 let lastAiCommentAt = 0;   // 直近にAI弾幕を画面へ流した時刻（アンビエント抑制用）
+let lastPrivacyKey = '';   // 除外ログの連続出力を抑える
 let runtimeDiagnostics = {
   ai: {
     status: 'idle',
@@ -112,6 +114,19 @@ let runtimeDiagnostics = {
     status: cfg.sttEnabled ? 'idle' : 'muted',
     backend: cfg.sttBackend || 'local',
     message: cfg.sttEnabled ? '停止' : 'OFF',
+    updatedAt: 0
+  },
+  privacy: {
+    excluded: false,
+    message: '',
+    kind: '',
+    rule: '',
+    updatedAt: 0
+  },
+  safety: {
+    emergencyStoppedAt: 0,
+    reason: '',
+    shortcut: cfg.emergencyStopShortcut || 'F9',
     updatedAt: 0
   }
 };
@@ -236,7 +251,7 @@ function sendControl(channel, payload) {
 function stampRuntimePatch(patch) {
   const at = Date.now();
   const stamped = { ...(patch || {}) };
-  for (const key of ['ai', 'stt']) {
+  for (const key of ['ai', 'stt', 'privacy', 'safety']) {
     if (patch && patch[key]) stamped[key] = { ...patch[key], updatedAt: at };
   }
   return stamped;
@@ -254,6 +269,52 @@ function updateRuntimeDiagnostics(patch) {
   const snapshot = runtimeDiagnosticsSnapshot();
   sendControl('diagnostics', snapshot);
   return snapshot;
+}
+
+function privacySafeContext(privacy) {
+  return {
+    title: '<privacy-excluded>',
+    process: privacy.kind === 'process' ? privacy.rule : ''
+  };
+}
+
+function updatePrivacyDiagnostics(privacy) {
+  if (privacy && privacy.excluded) {
+    const key = `${privacy.kind || ''}:${privacy.rule || ''}`;
+    if (key !== lastPrivacyKey) {
+      logger.info('privacy.excluded', { kind: privacy.kind, rule: privacy.rule });
+      lastPrivacyKey = key;
+    }
+    updateRuntimeDiagnostics({
+      privacy: {
+        excluded: true,
+        message: privacy.message,
+        kind: privacy.kind || '',
+        rule: privacy.rule || ''
+      },
+      ai: {
+        status: 'idle',
+        requestedBrain: cfg.brain || 'codex',
+        source: '',
+        fallbackFrom: '',
+        lastError: '',
+        lastResult: 'プライバシー除外中'
+      }
+    });
+    return;
+  }
+  if (lastPrivacyKey) {
+    logger.info('privacy.clear');
+    lastPrivacyKey = '';
+  }
+  updateRuntimeDiagnostics({
+    privacy: {
+      excluded: false,
+      message: '',
+      kind: '',
+      rule: ''
+    }
+  });
 }
 
 // コントロール画面を最前面に呼び出す（F7）。閉じていれば作り直す。
@@ -419,8 +480,26 @@ async function captureCycle() {
   let signature = null;
   try {
     context = await scr.getForegroundWindow();
-    _lastContext = context;
   } catch {}
+
+  const privacy = privacyRules.findPrivacyExclusion(context, cfg);
+  if (privacy.excluded) {
+    const safeContext = privacySafeContext(privacy);
+    _lastContext = safeContext;
+    updatePrivacyDiagnostics(privacy);
+    sendControl('status', {
+      idle: true,
+      privacyExcluded: true,
+      privacyReason: privacy.message,
+      lastContext: safeContext
+    });
+    cycleBusy = false;
+    reactivePending = false;
+    return;
+  }
+  _lastContext = context;
+  updatePrivacyDiagnostics(null);
+
   try {
     const shot = await scr.captureScreenshot(captureTargetDisplay());
     if (shot) { imagePath = shot.file; signature = shot.signature; }
@@ -583,7 +662,7 @@ function startRunning() {
   broadcastRunning();
 }
 
-function stopRunning() {
+function stopRunning(options = {}) {
   running = false;
   logger.info('danmaku.stop');
   clearInterval(captureTimer); captureTimer = null;
@@ -598,6 +677,7 @@ function stopRunning() {
   transcriptLog = [];
   prevSignature = null;
   idleStreak = 0;
+  if (options.clearOverlay) broadcastOverlay('clear-danmaku', {});
   updateRuntimeDiagnostics({
     ai: {
       status: 'idle',
@@ -614,6 +694,20 @@ function stopRunning() {
     }
   });
   broadcastRunning();
+}
+
+function emergencyStop(reason = 'shortcut') {
+  logger.warn('emergency.stop', { reason });
+  stopRunning({ clearOverlay: true });
+  updateRuntimeDiagnostics({
+    safety: {
+      emergencyStoppedAt: Date.now(),
+      reason,
+      shortcut: cfg.emergencyStopShortcut || 'F9'
+    }
+  });
+  sendControl('emergency-stop', { reason, at: Date.now(), shortcut: cfg.emergencyStopShortcut || 'F9' });
+  summonControl();
 }
 
 function broadcastRunning() {
@@ -638,6 +732,16 @@ function configSummaryForDiagnostics() {
     multiMonitor: cfg.multiMonitor,
     captureDisplayIndex: cfg.captureDisplayIndex,
     overlayContentProtection: cfg.overlayContentProtection,
+    privacyExclusions: {
+      enabled: cfg.privacyExclusions && cfg.privacyExclusions.enabled !== false,
+      processNamesCount: Array.isArray(cfg.privacyExclusions && cfg.privacyExclusions.processNames)
+        ? cfg.privacyExclusions.processNames.length
+        : 0,
+      titlePatternsCount: Array.isArray(cfg.privacyExclusions && cfg.privacyExclusions.titlePatterns)
+        ? cfg.privacyExclusions.titlePatterns.length
+        : 0
+    },
+    emergencyStopShortcut: cfg.emergencyStopShortcut,
     idleDetection: cfg.idleDetection,
     micEnabled: cfg.micEnabled,
     micThreshold: cfg.micThreshold,
@@ -741,6 +845,9 @@ ipcMain.handle('set-config', (_e, patch) => {
       backend: cfg.sttBackend || 'local',
       status: cfg.sttEnabled ? 'idle' : 'muted',
       message: cfg.sttEnabled ? '待機' : 'OFF'
+    },
+    safety: {
+      shortcut: cfg.emergencyStopShortcut || 'F9'
     }
   });
   // マルチモニター設定が変わったらオーバーレイを作り直す（スタイルは生成側で再送）。
@@ -761,6 +868,11 @@ ipcMain.handle('toggle', (_e, on) => {
   if (on === undefined) on = !running;
   if (on) startRunning(); else stopRunning();
   return running;
+});
+
+ipcMain.handle('emergency-stop', (_e, reason) => {
+  emergencyStop(reason || 'control');
+  return true;
 });
 
 ipcMain.handle('test-comment', (_e, text) => {
@@ -875,11 +987,20 @@ app.whenReady().then(() => {
   screen.on('display-metrics-changed', scheduleOverlayRebuild);
 
   // F8 で配信ON/OFF
-  globalShortcut.register('F8', () => {
+  const f8Registered = globalShortcut.register('F8', () => {
     if (running) stopRunning(); else startRunning();
   });
   // F7 でコントロール画面を最前面に呼び出す（裏に隠れた時の救済）
-  globalShortcut.register('F7', summonControl);
+  const f7Registered = globalShortcut.register('F7', summonControl);
+  // F9 で緊急停止: 画面キャプチャ・弾幕送出・マイク監視を即停止する。
+  const emergencyShortcut = cfg.emergencyStopShortcut || 'F9';
+  const emergencyRegistered = globalShortcut.register(emergencyShortcut, () => emergencyStop('shortcut'));
+  logger.info('shortcuts.registered', {
+    f7: f7Registered,
+    f8: f8Registered,
+    emergency: emergencyRegistered,
+    emergencyShortcut
+  });
   // 起動時にも一度前面化して見失いを防ぐ
   setTimeout(summonControl, 800);
 

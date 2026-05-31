@@ -200,6 +200,16 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.privacy-notice {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 93, 115, .45);
+  border-radius: 8px;
+  background: rgba(255, 93, 115, .1);
+  color: #ffb9c3;
+  font-size: 12px;
+  font-weight: 700;
+}
 
 .big-btn {
   width: 100%;
@@ -294,9 +304,57 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
   color: var(--ink);
   border: 1px solid var(--line);
 }
+.field textarea {
+  width: 100%;
+  min-height: 78px;
+  margin-top: 6px;
+  padding: 8px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11131a;
+  color: var(--ink);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
 .field span { color: var(--ink); font-weight: 600; }
 .row { margin: 6px 0; }
 .row label { font-size: 13px; }
+
+.emergency-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.emergency-row span {
+  flex: 1;
+  min-width: 0;
+  color: var(--sub);
+  font-size: 12px;
+}
+.emergency-row strong {
+  display: inline-block;
+  min-width: 34px;
+  margin-left: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 210, 77, .45);
+  border-radius: 8px;
+  color: var(--warn);
+  text-align: center;
+}
+.emergency-row button {
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+#emergencyStatus.ok { color: var(--ok); }
+#emergencyStatus.warn { color: var(--warn); }
 
 .test { display: flex; gap: 8px; }
 .test input { flex: 1; min-width: 0; padding: 9px; border-radius: 8px; background: #11131a; color: var(--ink); border: 1px solid var(--line); }

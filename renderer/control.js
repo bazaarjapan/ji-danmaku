@@ -4,12 +4,26 @@ const $ = (id) => document.getElementById(id);
 let cfg = null;
 let running = false;
 
+// 関係ない項目を隠して見やすくする。
+function show(id, on) { const el = $(id); if (el) el.classList.toggle('hidden', !on); }
+function applyVisibility() {
+  const mic = $('micEnabled').checked;
+  const stt = $('sttEnabled').checked;
+  const openai = $('sttBackend').value === 'openai';
+  const filler = $('ambientEnabled').checked;
+  show('micDetails', mic);                       // マイクON時だけ音声詳細
+  show('sttOptions', mic && stt);                // 文字起こしON時だけエンジン等
+  show('whisperModelField', mic && stt && !openai); // ローカル時だけWhisperモデル
+  show('ambientField', filler);                  // フィラーON時だけ密度
+}
+
 // ---- 初期化 ------------------------------------------------------------
 
 async function init() {
   cfg = await window.ji.getConfig();
   reflectConfig();
   bindControls();
+  applyVisibility();
   window.ji.onRunning((r) => setRunning(r));
   window.ji.onSttResult(handleSttResult);
   window.ji.onStatus((s) => {
@@ -69,18 +83,19 @@ function bindControls() {
 
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
   $('ambientEnabled').addEventListener('change', () => {
-    const on = $('ambientEnabled').checked;
-    patch({ ambientEnabled: on });
-    $('ambientPerMinute').disabled = !on;  // OFF時は密度スライダーを無効化
+    patch({ ambientEnabled: $('ambientEnabled').checked });
+    applyVisibility();  // フィラーOFFで密度スライダーを隠す
   });
   $('micEnabled').addEventListener('change', () => {
     patch({ micEnabled: $('micEnabled').checked });
     if ($('micEnabled').checked) startMic(); else stopMic();
+    applyVisibility();
   });
   $('sttEnabled').addEventListener('change', () => {
     cfg.sttEnabled = $('sttEnabled').checked;
     patch({ sttEnabled: cfg.sttEnabled });
     if (cfg.sttEnabled) { if (micStream) startStt(); } else stopStt();
+    applyVisibility();
   });
   $('whisperModel').addEventListener('change', () => {
     cfg.whisperModel = $('whisperModel').value;
@@ -90,6 +105,7 @@ function bindControls() {
   $('sttBackend').addEventListener('change', () => {
     cfg.sttBackend = $('sttBackend').value;
     patch({ sttBackend: cfg.sttBackend });
+    applyVisibility();  // OpenAI選択でWhisperモデルを隠す
     // バックエンドで取り込みレートが変わるため、マイクごと再起動して反映。
     if (micStream) { stopMic(); startMic(); }
   });

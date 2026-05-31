@@ -1,6 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-small';
 let cfg = null;
 let running = false;
 
@@ -26,6 +27,7 @@ async function init() {
   reflectConfig();
   bindControls();
   applyVisibility();
+  setSettingsOpen(false);
   window.ji.onRunning((r) => setRunning(r));
   window.ji.onSttResult(handleSttResult);
   window.ji.onStatus((s) => {
@@ -53,7 +55,12 @@ function reflectConfig() {
   $('micEnabled').checked = !!cfg.micEnabled;
   $('sttEnabled').checked = !!cfg.sttEnabled;
   $('sttBackend').value = cfg.sttBackend || 'local';
-  $('whisperModel').value = cfg.whisperModel;
+  const whisperModel = isWhisperModel(cfg.whisperModel) ? cfg.whisperModel : DEFAULT_WHISPER_MODEL;
+  $('whisperModel').value = whisperModel;
+  if (cfg.whisperModel !== whisperModel) {
+    cfg.whisperModel = whisperModel;
+    patch({ whisperModel });
+  }
   $('openaiApiKey').value = '';
   updateOpenAiKeyStatus();
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
@@ -74,6 +81,13 @@ function setSlider(id, val, fmt, labelId) {
 }
 
 function bindControls() {
+  $('menuToggle').addEventListener('click', () => setSettingsOpen(true));
+  $('menuClose').addEventListener('click', () => setSettingsOpen(false));
+  $('settingsBackdrop').addEventListener('click', () => setSettingsOpen(false));
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setSettingsOpen(false);
+  });
+
   $('toggle').addEventListener('click', async () => {
     running = await window.ji.toggle();
     setRunning(running);
@@ -150,6 +164,17 @@ async function flushPatch(extra = {}) {
   return cfg;
 }
 
+function isWhisperModel(value) {
+  return Array.from($('whisperModel').options).some((option) => option.value === value);
+}
+
+function setSettingsOpen(open) {
+  $('settingsPanel').classList.toggle('hidden', !open);
+  $('settingsBackdrop').classList.toggle('hidden', !open);
+  $('settingsPanel').setAttribute('aria-hidden', open ? 'false' : 'true');
+  $('menuToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 function updateOpenAiKeyStatus(message, level) {
   const el = $('openaiKeyStatus');
   if (!el) return;
@@ -208,8 +233,8 @@ function setRunning(r) {
   btn.classList.toggle('on', r);
   btn.classList.toggle('off', !r);
   btn.innerHTML = r
-    ? '■ 配信ストップ <span class="hot">(F8)</span>'
-    : '▶ 配信スタート <span class="hot">(F8)</span>';
+    ? '■ 字弾幕ストップ'
+    : '▶ 字弾幕スタート';
   $('dot').classList.toggle('live', r);
   $('statusText').textContent = r ? '配信中（弾幕が流れています）' : '停止中';
   if (r && $('micEnabled').checked) startMic();
@@ -239,7 +264,7 @@ async function startMic() {
     $('micInfo').textContent = 'マイク取得失敗: ' + e.message;
     return;
   }
-  // バックエンドに合わせた取り込みレート（ローカル16k / OpenAI 24k）。ブラウザが自動リサンプル。
+  // バックエンドに合わせた取り込みレート（ローカル16k / GPT Realtime Whisper 24k）。
   sttSR = isOpenAiStt() ? 24000 : 16000;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sttSR });
   const src = audioCtx.createMediaStreamSource(micStream);
@@ -374,8 +399,15 @@ function updateCost(usd, ms) {
   $('sttCost').textContent = `☁ OpenAI概算: $${(usd || 0).toFixed(4)}（累計 ${mm}分${ss}秒）`;
 }
 
+function updateMainTranscript(text) {
+  const el = $('mainTranscript');
+  if (!el || !text) return;
+  el.textContent = text;
+}
+
 // どう聞き取ったか（認識テキスト）を直近6件まで履歴表示。
 function pushRecognized(text) {
+  updateMainTranscript(text);
   const log = $('sttLog');
   if (!log || !text) return;
   const div = document.createElement('div');

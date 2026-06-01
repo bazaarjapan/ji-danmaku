@@ -348,6 +348,8 @@ function summonControl() {
 
 function createTrayImage() {
   const candidates = [
+    path.join(process.resourcesPath || '', 'tray-icon.ico'),
+    path.join(process.resourcesPath || '', 'tray-icon.png'),
     path.join(app.getAppPath(), 'build', 'icon.ico'),
     path.join(app.getAppPath(), 'build', 'icon.png'),
     path.join(__dirname, '..', 'build', 'icon.ico'),

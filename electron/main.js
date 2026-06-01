@@ -532,6 +532,48 @@ function cycleCancelled(token) {
   return !running || token !== stopToken;
 }
 
+function aiWatchdogTimeoutMs() {
+  const brain = cfg.brain || 'codex';
+  if (brain === 'codex') {
+    const base = cfg.codex && Number(cfg.codex.timeoutMs);
+    return Math.max(15000, (Number.isFinite(base) && base > 0 ? base : 60000) + 10000);
+  }
+  return 70000;
+}
+
+function fallbackBatchAfterWatchdog(params, message) {
+  const count = params && params.count ? params.count : cfg.commentsPerBatch || 6;
+  const brain = cfg.brain || 'codex';
+  if (brain === 'codex' && ai.shutdown) ai.shutdown('codex');
+  logger.warn('ai.generation_watchdog_timeout', {
+    brain,
+    timeoutMs: aiWatchdogTimeoutMs(),
+    message
+  });
+  return {
+    source: 'mock',
+    requestedBrain: brain,
+    comments: ai.mock.generate(count, (params && params.context) || {}, cfg.commentTone),
+    fallbackFrom: brain,
+    error: message
+  };
+}
+
+function generateBatchWithWatchdog(params) {
+  const timeoutMs = aiWatchdogTimeoutMs();
+  const controller = new AbortController();
+  let timer = null;
+  return Promise.race([
+    ai.generateBatch(cfg, params, { signal: controller.signal }).finally(() => clearTimeout(timer)),
+    new Promise((resolve) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve(fallbackBatchAfterWatchdog(params, `AI生成が${Math.round(timeoutMs / 1000)}秒で応答しませんでした`));
+      }, timeoutMs);
+    })
+  ]);
+}
+
 async function captureCycle() {
   if (!running || cycleBusy) return;  // 生成中なら今回の発火はスキップ（プロセス重複防止）
   cycleBusy = true;
@@ -657,7 +699,7 @@ async function captureCycle() {
         lastResult: '生成中'
       }
     });
-    const { source, comments, requestedBrain, fallbackFrom, error } = await ai.generateBatch(cfg, { context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
+    const { source, comments, requestedBrain, fallbackFrom, error } = await generateBatchWithWatchdog({ context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (cycleCancelled(cycleToken)) return;
     updateRuntimeDiagnostics({

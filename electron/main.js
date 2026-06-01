@@ -347,6 +347,23 @@ function summonControl() {
 }
 
 function createTrayImage() {
+  const candidates = [
+    path.join(app.getAppPath(), 'build', 'icon.ico'),
+    path.join(app.getAppPath(), 'build', 'icon.png'),
+    path.join(__dirname, '..', 'build', 'icon.ico'),
+    path.join(__dirname, '..', 'build', 'icon.png')
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const image = nativeImage.createFromPath(candidate);
+      if (!image.isEmpty()) {
+        image.setTemplateImage(false);
+        return image;
+      }
+    } catch {}
+  }
+
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">',
     '<rect width="32" height="32" rx="7" fill="#11131a"/>',

@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { deepMerge } = require('../electron/config');
+const { DEFAULTS, deepMerge, defaultConfig, exportableConfig, sanitizeImportedConfig } = require('../electron/config');
 
 test('deepMerge merges nested objects without losing sibling defaults', () => {
   const base = {
@@ -41,4 +41,41 @@ test('deepMerge replaces arrays and explicit scalar values', () => {
     ngWords: ['b', 'c'],
     nested: { enabled: false, mode: 'drop' }
   });
+});
+
+test('exportableConfig removes secret and helper fields', () => {
+  const result = exportableConfig({
+    ...DEFAULTS,
+    openaiApiKey: 'sk-secret',
+    openaiApiKeyEncrypted: 'encrypted',
+    defaultNgWords: ['x']
+  });
+
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'openaiApiKey'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'openaiApiKeyEncrypted'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'defaultNgWords'), false);
+  assert.equal(result.brain, DEFAULTS.brain);
+});
+
+test('sanitizeImportedConfig keeps known typed keys and drops unknown or invalid values', () => {
+  const result = sanitizeImportedConfig({
+    brain: 'mock',
+    captureIntervalMs: 'fast',
+    ngWords: [' foo ', '', 'bar'],
+    safeZone: { top: 120, unknown: 9 },
+    openaiApiKeyEncrypted: 'encrypted',
+    unknownKey: true
+  });
+
+  assert.deepEqual(result, {
+    brain: 'mock',
+    ngWords: ['foo', 'bar'],
+    safeZone: { top: 120 }
+  });
+});
+
+test('defaultConfig returns a deep clone', () => {
+  const first = defaultConfig();
+  first.codex.timeoutMs = 1;
+  assert.equal(defaultConfig().codex.timeoutMs, DEFAULTS.codex.timeoutMs);
 });

@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('ji', {
   // 設定
   getConfig: () => ipcRenderer.invoke('get-config'),
   setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
+  exportConfig: () => ipcRenderer.invoke('export-config'),
+  importConfig: () => ipcRenderer.invoke('import-config'),
+  resetConfig: () => ipcRenderer.invoke('reset-config'),
 
   // 配信制御
   toggle: (on) => ipcRenderer.invoke('toggle', on),

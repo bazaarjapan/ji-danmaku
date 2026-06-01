@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('ji', {
 
   // 配信制御
   toggle: (on) => ipcRenderer.invoke('toggle', on),
+  emergencyStop: (reason) => ipcRenderer.invoke('emergency-stop', reason),
   testComment: (text) => ipcRenderer.invoke('test-comment', text),
   getRuntimeDiagnostics: () => ipcRenderer.invoke('get-runtime-diagnostics'),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
@@ -25,8 +26,10 @@ contextBridge.exposeInMainWorld('ji', {
 
   // 受信
   onDanmaku: (cb) => ipcRenderer.on('danmaku', (_e, d) => cb(d)),
+  onClearDanmaku: (cb) => ipcRenderer.on('clear-danmaku', () => cb()),
   onStyle: (cb) => ipcRenderer.on('style', (_e, s) => cb(s)),
   onRunning: (cb) => ipcRenderer.on('running', (_e, r) => cb(r)),
+  onEmergencyStop: (cb) => ipcRenderer.on('emergency-stop', (_e, d) => cb(d)),
   onDiagnostics: (cb) => ipcRenderer.on('diagnostics', (_e, d) => cb(d)),
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s))
 });

@@ -31,10 +31,19 @@ async function init() {
   setSettingsOpen(false);
   window.ji.onRunning((r) => setRunning(r));
   window.ji.onSttResult(handleSttResult);
+  window.ji.onEmergencyStop(handleEmergencyStop);
   window.ji.onStatus((s) => {
     if (s.brain) $('brainBadge').textContent = 'brain: ' + s.brain;
+    if (s.privacyExcluded) {
+      const message = s.privacyReason || 'プライバシー除外中';
+      $('statusText').textContent = message;
+      $('mainStatusText').textContent = '除外中';
+      setPrivacyNotice(true, message);
+    } else if (s.idle !== undefined) {
+      setPrivacyNotice(false);
+    }
     // 停止後に届く遅延ステータスでUIを「配信中」に戻さないよう running でガード。
-    if (s.idle !== undefined && running) {
+    if (s.idle !== undefined && running && !s.privacyExcluded) {
       $('statusText').textContent = s.idle
         ? '💤 アイドル（画面変化なし → 生成スキップ中・節約）'
         : '配信中（弾幕が流れています）';
@@ -67,6 +76,11 @@ function reflectConfig() {
   }
   $('openaiApiKey').value = '';
   updateOpenAiKeyStatus();
+  const privacy = cfg.privacyExclusions || {};
+  $('privacyExclusionsEnabled').checked = privacy.enabled !== false;
+  $('privacyProcessNames').value = listToText(privacy.processNames);
+  $('privacyTitlePatterns').value = listToText(privacy.titlePatterns);
+  $('emergencyShortcut').textContent = cfg.emergencyStopShortcut || 'F9';
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
   setSlider('voiceReactivity', cfg.voiceReactivity, (v) => `声:${v}% / 画面:${100 - v}%`, 'vrLabel');
   setSlider('ambientPerMinute', cfg.ambientPerMinute, (v) => v + '個', 'ambLabel');
@@ -84,6 +98,17 @@ function setSlider(id, val, fmt, labelId) {
   $(labelId).textContent = fmt(Number(val));
   $(id)._fmt = fmt;
   $(id)._label = labelId;
+}
+
+function listToText(value) {
+  return Array.isArray(value) ? value.join('\n') : '';
+}
+
+function textToList(value) {
+  return String(value || '')
+    .split(/[\r\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function bindControls() {
@@ -108,6 +133,7 @@ function bindControls() {
   });
   $('copyDiagnostics').addEventListener('click', copyDiagnostics);
   $('exportDiagnostics').addEventListener('click', exportDiagnostics);
+  $('emergencyStop').addEventListener('click', emergencyStop);
 
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
   $('ambientEnabled').addEventListener('change', () => {
@@ -145,6 +171,15 @@ function bindControls() {
   $('clearOpenaiApiKey').addEventListener('click', clearOpenAiKey);
   $('openaiApiKey').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') saveOpenAiKey();
+  });
+  $('privacyExclusionsEnabled').addEventListener('change', () => {
+    patch({ privacyExclusions: { enabled: $('privacyExclusionsEnabled').checked } });
+  });
+  $('privacyProcessNames').addEventListener('input', () => {
+    patch({ privacyExclusions: { processNames: textToList($('privacyProcessNames').value) } });
+  });
+  $('privacyTitlePatterns').addEventListener('input', () => {
+    patch({ privacyExclusions: { titlePatterns: textToList($('privacyTitlePatterns').value) } });
   });
 
   for (const id of ['captureIntervalMs', 'voiceReactivity', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
@@ -253,11 +288,15 @@ function renderDiagnosticsPanel() {
   const aiDiag = runtimeDiagnostics.ai || {};
   const sttDiag = runtimeDiagnostics.stt || {};
   const codexDiag = runtimeDiagnostics.codex || {};
+  const privacyDiag = runtimeDiagnostics.privacy || {};
+  const safetyDiag = runtimeDiagnostics.safety || {};
   const aiBrain = aiDiag.requestedBrain || (cfg && cfg.brain) || 'codex';
-  const aiText = aiDiag.status === 'generating'
+  const aiText = privacyDiag.excluded
+    ? '除外中'
+    : (aiDiag.status === 'generating'
     ? `${aiBrain} 生成中`
-    : (aiDiag.lastResult || (running ? '待機' : '停止'));
-  setDiagSignal('diagAiRow', 'diagAiText', aiText, stateFromRuntime(aiDiag.status));
+    : (aiDiag.lastResult || (running ? '待機' : '停止')));
+  setDiagSignal('diagAiRow', 'diagAiText', aiText, privacyDiag.excluded ? 'muted' : stateFromRuntime(aiDiag.status));
 
   const fallbackText = aiDiag.fallbackFrom
     ? `${aiDiag.fallbackFrom} -> ${aiDiag.source || 'mock'}`
@@ -286,9 +325,11 @@ function renderDiagnosticsPanel() {
   setDiagSignal('diagSttRow', 'diagSttText', `${sttBackend}: ${sttMessage}`, stateFromRuntime(sttDiag.status));
 
   const details = [];
+  if (privacyDiag.excluded && privacyDiag.message) details.push(privacyDiag.message);
   if (aiDiag.lastError) details.push(aiDiag.lastError);
   if (codexDiag.consecutiveFails) details.push(`Codex失敗 ${codexDiag.consecutiveFails}回`);
   if (sttDiag.status === 'error' && sttDiag.message) details.push(sttDiag.message);
+  if (safetyDiag.emergencyStoppedAt) details.push('緊急停止済み');
   $('diagDetail').textContent = details.join(' / ').slice(0, 160);
 }
 
@@ -394,6 +435,21 @@ function setDiagnosticsStatus(text, level) {
   el.textContent = text || '';
 }
 
+function setEmergencyStatus(text, level) {
+  const el = $('emergencyStatus');
+  if (!el) return;
+  el.classList.remove('ok', 'warn');
+  if (level) el.classList.add(level);
+  el.textContent = text || '';
+}
+
+function setPrivacyNotice(showNotice, text = '') {
+  const el = $('privacyNotice');
+  if (!el) return;
+  el.classList.toggle('hidden', !showNotice);
+  el.textContent = showNotice ? text : '';
+}
+
 async function copyDiagnostics() {
   try {
     const result = await window.ji.getDiagnostics();
@@ -413,6 +469,22 @@ async function exportDiagnostics() {
   }
 }
 
+async function emergencyStop() {
+  try {
+    await window.ji.emergencyStop('control');
+    handleEmergencyStop({ reason: 'control', shortcut: cfg.emergencyStopShortcut || 'F9' });
+  } catch (e) {
+    setEmergencyStatus(e.message || '緊急停止に失敗しました', 'warn');
+  }
+}
+
+function handleEmergencyStop(payload = {}) {
+  setRunning(false);
+  const shortcut = payload.shortcut || (cfg && cfg.emergencyStopShortcut) || 'F9';
+  setEmergencyStatus(`緊急停止しました（${shortcut}）`, 'ok');
+  setPrivacyNotice(false);
+}
+
 function setRunning(r) {
   running = r;
   setMainRunStatus(r);
@@ -424,6 +496,7 @@ function setRunning(r) {
     : '▶ 字弾幕スタート';
   $('dot').classList.toggle('live', r);
   $('statusText').textContent = r ? '配信中（弾幕が流れています）' : '停止中';
+  if (!r) setPrivacyNotice(false);
   if (r && $('micEnabled').checked) startMic();
   else stopMic();
 }

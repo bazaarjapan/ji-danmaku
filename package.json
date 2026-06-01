@@ -20,12 +20,19 @@
       "!.env",
       "!.env.*",
       "!dist/**",
+      "!test/**",
+      "!.github/**",
+      "!*.log",
+      "!electron-*.log",
+      "!build/icon.svg",
+      "!build/icon.png",
       "!**/node_modules/onnxruntime-node/**",
       "!**/node_modules/sharp/**",
       "!**/node_modules/@img/**",
       "!renderer/_*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
@@ -33,8 +40,12 @@
       "signAndEditExecutable": false
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
     }
   },
   "devDependencies": {

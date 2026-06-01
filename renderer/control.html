@@ -82,6 +82,21 @@
       <div id="micDetails">
         <div class="vu"><div id="vuBar"></div></div>
         <div id="micInfo" class="hint">マイク未開始</div>
+        <label class="field">
+          入力デバイス
+          <select id="micDeviceId">
+            <option value="">既定のマイク</option>
+          </select>
+        </label>
+        <label class="field">
+          発話しきい値: <span id="micThresholdLabel"></span>
+          <input type="range" id="micThreshold" min="0.02" max="0.40" step="0.01" />
+        </label>
+        <div class="mic-actions">
+          <button type="button" id="refreshMicDevices" class="ghost">デバイス更新</button>
+          <button type="button" id="calibrateMic">自動調整</button>
+        </div>
+        <div id="micCalibrationStatus" class="hint"></div>
 
         <div class="row">
           <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こしして反応させる</label>

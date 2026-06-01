@@ -2,9 +2,66 @@
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-small';
+const PRESETS = {
+  chat: {
+    captureIntervalMs: 12000,
+    voiceReactivity: 75,
+    ambientEnabled: true,
+    ambientPerMinute: 55,
+    speedMs: 8000,
+    fontSize: 30,
+    opacity: 0.92
+  },
+  work: {
+    captureIntervalMs: 16000,
+    voiceReactivity: 55,
+    ambientEnabled: true,
+    ambientPerMinute: 25,
+    speedMs: 9500,
+    fontSize: 28,
+    opacity: 0.88
+  },
+  game: {
+    captureIntervalMs: 8000,
+    voiceReactivity: 45,
+    ambientEnabled: true,
+    ambientPerMinute: 70,
+    speedMs: 6500,
+    fontSize: 28,
+    opacity: 0.9
+  },
+  presentation: {
+    captureIntervalMs: 14000,
+    voiceReactivity: 85,
+    ambientEnabled: true,
+    ambientPerMinute: 12,
+    speedMs: 11000,
+    fontSize: 32,
+    opacity: 0.86
+  },
+  quiet: {
+    captureIntervalMs: 18000,
+    voiceReactivity: 50,
+    ambientEnabled: false,
+    ambientPerMinute: 0,
+    speedMs: 11000,
+    fontSize: 26,
+    opacity: 0.78
+  },
+  lively: {
+    captureIntervalMs: 7000,
+    voiceReactivity: 80,
+    ambientEnabled: true,
+    ambientPerMinute: 95,
+    speedMs: 6200,
+    fontSize: 32,
+    opacity: 0.94
+  }
+};
 let cfg = null;
 let running = false;
 let runtimeDiagnostics = {};
+let applyingPreset = false;
 
 // 関係ない項目を隠して見やすくする。
 function show(id, on) { const el = $(id); if (el) el.classList.toggle('hidden', !on); }
@@ -62,6 +119,7 @@ async function init() {
 }
 
 function reflectConfig() {
+  $('preset').value = PRESETS[cfg.preset] ? cfg.preset : 'custom';
   $('brain').value = cfg.brain;
   $('ambientEnabled').checked = cfg.ambientEnabled !== false;
   $('ambientPerMinute').disabled = cfg.ambientEnabled === false;
@@ -130,6 +188,37 @@ function textToList(value) {
     .filter(Boolean);
 }
 
+function markPresetCustom() {
+  if (applyingPreset) return {};
+  $('preset').value = 'custom';
+  return { preset: 'custom' };
+}
+
+function presetControlledPatch(values) {
+  return mergeDiagnostics(markPresetCustom(), values);
+}
+
+async function applyPreset(value) {
+  if (value === 'custom') {
+    cfg = await flushPatch({ preset: 'custom' });
+    return;
+  }
+  const preset = PRESETS[value];
+  if (!preset) return;
+  applyingPreset = true;
+  try {
+    const next = { preset: value, ...preset };
+    cfg = mergeDiagnostics(cfg, next);
+    reflectConfig();
+    applyVisibility();
+    cfg = await flushPatch(next);
+    reflectConfig();
+    applyVisibility();
+  } finally {
+    applyingPreset = false;
+  }
+}
+
 function bindControls() {
   $('menuToggle').addEventListener('click', () => setSettingsOpen(true));
   $('menuClose').addEventListener('click', () => setSettingsOpen(false));
@@ -154,9 +243,10 @@ function bindControls() {
   $('exportDiagnostics').addEventListener('click', exportDiagnostics);
   $('emergencyStop').addEventListener('click', emergencyStop);
 
+  $('preset').addEventListener('change', () => applyPreset($('preset').value));
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
   $('ambientEnabled').addEventListener('change', () => {
-    patch({ ambientEnabled: $('ambientEnabled').checked });
+    patch(presetControlledPatch({ ambientEnabled: $('ambientEnabled').checked }));
     applyVisibility();  // フィラーOFFで密度スライダーを隠す
   });
   $('micEnabled').addEventListener('change', () => {
@@ -206,7 +296,7 @@ function bindControls() {
       const el = $(id);
       const num = id === 'opacity' ? parseFloat(el.value) : parseInt(el.value, 10);
       $(el._label).textContent = el._fmt(num);
-      patch({ [id]: num });
+      patch(presetControlledPatch({ [id]: num }));
     });
   }
   for (const edge of ['top', 'bottom', 'left', 'right']) {

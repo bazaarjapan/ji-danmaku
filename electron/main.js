@@ -740,6 +740,7 @@ function configSummaryForDiagnostics() {
   const keyState = openAiApiKeyState();
   return logger.redact({
     brain: cfg.brain,
+    preset: cfg.preset,
     captureIntervalMs: cfg.captureIntervalMs,
     commentsPerBatch: cfg.commentsPerBatch,
     commentsPerBatchScreen: cfg.commentsPerBatchScreen,

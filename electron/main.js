@@ -637,7 +637,7 @@ function ambientTick() {
   // OFF時は何も出さず＝AIが生成した弾幕だけが流れる。
   if (cfg.ambientEnabled && per > 0 && !aiFlowing) {
     const n = micState.speaking ? 2 : 1;
-    sendComments(ai.mock.generate(n, lastContext()), 'ambient');
+    sendComments(ai.mock.generate(n, lastContext(), cfg.commentTone), 'ambient');
   }
   // ループは running 中は維持し、チェック/スライダー変更を即反映する。
   ambientTimer = setTimeout(ambientTick, base * factor * (0.6 + Math.random() * 0.8));
@@ -741,6 +741,7 @@ function configSummaryForDiagnostics() {
   return logger.redact({
     brain: cfg.brain,
     preset: cfg.preset,
+    commentTone: cfg.commentTone,
     captureIntervalMs: cfg.captureIntervalMs,
     commentsPerBatch: cfg.commentsPerBatch,
     commentsPerBatchScreen: cfg.commentsPerBatchScreen,
@@ -915,7 +916,7 @@ ipcMain.on('mic', (_e, state) => {
   if (state.justSpoke && running) {
     if (cfg.ambientEnabled) {
       const n = 1 + Math.floor(Math.random() * 2);
-      sendComments(ai.mock.generate(n, lastContext()), 'voice');
+      sendComments(ai.mock.generate(n, lastContext(), cfg.commentTone), 'voice');
     }
     triggerReactiveCycle();
   }

@@ -117,11 +117,26 @@ OPENAI_API_KEY=sk-...
 npm run dist
 ```
 
-- 生成物は `dist/` に出力（`.gitignore` 済み）。NSISインストーラとポータブル exe の両方。
+- 生成物は `dist/` に出力（`.gitignore` 済み）。主なファイル名は次の形式です。
+  - `Ji-Danmaku-Setup-<version>-x64.exe`
+  - `Ji-Danmaku-Portable-<version>-x64.exe`
+- Windowsアイコンは `build/icon.ico` を `build.win.icon` に指定しています。
 - Whisper はレンダラーから `node_modules` を直接読むため `asar` は無効化。未使用の重いネイティブ依存
   （`onnxruntime-node` / `sharp`）はビルドから除外してサイズを抑えています。
-- `.env` / `.env.local` / `dist/` は配布物に含めない設定です。OpenAI APIキーは利用者がコントロール画面で保存します。
-- アイコン未同梱（Electron既定）。`build.win.icon` に `.ico` を指定すると差し替え可能。
+- `.env` / `.env.local` / `dist/` / `.github` / `test` / ログファイルは配布物に含めない設定です。
+  OpenAI APIキーは利用者がコントロール画面で保存します。
+
+### リリース前チェック
+
+```powershell
+npm test
+$files = rg --files -g "*.js" -g "!node_modules/**"; foreach ($f in $files) { node --check $f; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+npm run dist
+Get-ChildItem dist
+Get-ChildItem dist -Recurse -Force -Include ".env",".env.*"   # 何も出ないこと
+```
+
+`npm run dist` が環境要因で実行できない場合は、PR本文またはリリースメモに理由を明記してください。
 
 ## 🗂 構成
 

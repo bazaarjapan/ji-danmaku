@@ -12,6 +12,7 @@ const openaiStt = require('./ai/openai-stt');
 const { dedupeAiComments, filterNgComments, normalizeNgWords } = require('./comment-utils');
 const logger = require('./logger');
 const privacyRules = require('./privacy-rules');
+const { codexCommandCandidates, codexCommandTarget } = require('./codex-command');
 
 // 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
 // 配布版ではコントロール画面からAPIキーを保存する。値はログに出さない。
@@ -989,24 +990,55 @@ function execFileText(command, args, options = {}) {
   });
 }
 
+function setupErrorDetail(error) {
+  const detail = String(
+    (error && (error.stderr || error.stdout || error.message)) || ''
+  ).trim().replace(/\s+/g, ' ');
+  return detail ? detail.slice(0, 180) : '詳細不明';
+}
+
+async function execCodexText(args, options = {}) {
+  let lastError = null;
+  for (const command of codexCommandCandidates()) {
+    try {
+      const target = codexCommandTarget(command, args);
+      const text = await execFileText(target.command, target.args, { ...target.options, ...options });
+      return { command, text };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Codex CLI not found');
+}
+
 async function checkCodexSetup() {
-  const bin = process.platform === 'win32' ? 'codex.cmd' : 'codex';
   try {
-    const version = await execFileText(bin, ['--version'], { timeout: 5000 });
+    const version = await execCodexText(['--version'], { timeout: 5000 });
+    try {
+      await execCodexText(['app-server', '--help'], { timeout: 5000 });
+    } catch (error) {
+      return setupItem(
+        'codex',
+        'Codex',
+        cfg.brain === 'codex' ? 'error' : 'warn',
+        version.text ? `Codex CLI は起動できます: ${version.text}` : 'Codex CLI は起動できます',
+        `codex app-server を確認できません: ${setupErrorDetail(error)}`
+      );
+    }
     return setupItem(
       'codex',
       'Codex',
       'ok',
-      version ? `利用可能: ${version}` : 'Codex CLI を起動できます',
+      version.text ? `利用可能: ${version.text} / app-server OK` : 'Codex CLI と app-server を確認できました',
       cfg.brain === 'codex' ? '' : 'Codexを使う場合はAIブレインをCodexに切り替えてください'
     );
-  } catch {
+  } catch (error) {
     return setupItem(
       'codex',
       'Codex',
       cfg.brain === 'codex' ? 'error' : 'warn',
       'Codex CLI を確認できません',
-      'codex login と PATH 設定を確認してください。未設定でもmock弾幕で継続できます'
+      `codex login と PATH 設定を確認してください: ${setupErrorDetail(error)}`
     );
   }
 }

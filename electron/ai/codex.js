@@ -16,8 +16,8 @@ const { spawn } = require('child_process');
 const { extractJson, normalizeComments } = require('./json-comments');
 const { toneInstruction } = require('./comment-tone');
 const logger = require('../logger');
+const { codexCommandCandidates, codexCommandTarget } = require('../codex-command');
 
-const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
 const DEFAULT_TURN_TIMEOUT_MS = 60000;
 const REQUEST_TIMEOUT_FLOOR_MS = 5000;
 const SERVER_RESTART_GRACE_MS = 5000;
@@ -111,11 +111,25 @@ class AppServer {
         this.restart(`ready failed: ${e.message}`);
       }
     }
-    this.start(timeoutMs);
-    await this.ready;
+    await this.startWithFallback(timeoutMs);
   }
 
-  start(timeoutMs) {
+  async startWithFallback(timeoutMs, commands = codexCommandCandidates()) {
+    let lastError = null;
+    for (const command of commands) {
+      this.start(timeoutMs, command);
+      try {
+        await this.ready;
+        return;
+      } catch (error) {
+        lastError = error;
+        if (this.child) this.restart(`app-server start failed: ${error.message}`);
+      }
+    }
+    throw lastError || new Error('app-server start failed');
+  }
+
+  start(timeoutMs, command) {
     this.buf = '';
     this._rejectPending(new Error('app-server restarting'));
     this.turnHandler = null;
@@ -124,7 +138,8 @@ class AppServer {
     this.threadKey = '';
     this.turnsOnServer = 0;
 
-    const child = spawn(CODEX_BIN, ['app-server'], appServerSpawnOptions());
+    const target = codexCommandTarget(command, ['app-server']);
+    const child = spawn(target.command, target.args, { ...appServerSpawnOptions(), ...target.options });
     this.child = child;
     this.startedAt = Date.now();
 
@@ -375,7 +390,7 @@ function requestTimeoutMs(timeoutMs) {
 }
 
 function appServerSpawnOptions(platform = process.platform) {
-  if (platform === 'win32') return { shell: true, windowsHide: true };
+  if (platform === 'win32') return { windowsHide: true };
   return { detached: true, windowsHide: true };
 }
 

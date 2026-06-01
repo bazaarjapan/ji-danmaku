@@ -397,11 +397,30 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
 #openaiKeyStatus.warn { color: var(--warn); }
 
 .hint { color: var(--sub); font-size: 11px; margin: 4px 0; }
+.hint.ok { color: var(--ok); }
+.hint.warn { color: var(--warn); }
 footer { margin-top: 4px; }
 
 .hidden { display: none !important; }
 
 #micDetails { margin-top: 6px; }
+.mic-actions {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.mic-actions button {
+  flex: 1 1 0;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent2);
+  color: #06222e;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mic-actions button.ghost { background: var(--line); color: var(--ink); }
+.mic-actions button:disabled { opacity: .55; cursor: default; }
 #sttOptions { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--line); }
 
 .cost { color: var(--warn); font-weight: 600; }

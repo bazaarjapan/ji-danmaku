@@ -77,8 +77,16 @@ const DEFAULTS = {
 
   // マイク監視: 喋ると弾幕がドッと増える「爽快感」担当。
   micEnabled: true,
+  // 空文字ならOS既定の入力デバイス。値がある場合は getUserMedia の deviceId として使う。
+  micDeviceId: '',
   // この音量(0-1)を超えたら「発話」とみなしてリアクションを盛る。
   micThreshold: 0.12,
+  // 自動キャリブレーション結果のメタ情報。判定自体は micThreshold を使う。
+  micCalibration: {
+    noiseFloor: 0,
+    peak: 0,
+    calibratedAt: ''
+  },
 
   // 音声認識(ローカルWhisper): 発話"内容"を文字起こしし、AIブレインに渡して反応させる。
   // Transformers.js + onnxruntime-web(WASM)でこのPC上のCPUだけで動く。追加課金なし。

@@ -82,6 +82,7 @@ function applyVisibility() {
 
 async function init() {
   cfg = await window.ji.getConfig();
+  await refreshMicDevices();
   reflectConfig();
   bindControls();
   applyVisibility();
@@ -122,6 +123,7 @@ function reflectConfig() {
   $('preset').value = PRESETS[cfg.preset] ? cfg.preset : 'custom';
   $('brain').value = cfg.brain;
   $('commentTone').value = isKnownSelectValue('commentTone', cfg.commentTone) ? cfg.commentTone : 'balanced';
+  $('micDeviceId').value = isKnownSelectValue('micDeviceId', cfg.micDeviceId) ? cfg.micDeviceId : '';
   $('ambientEnabled').checked = cfg.ambientEnabled !== false;
   $('ambientPerMinute').disabled = cfg.ambientEnabled === false;
   $('micEnabled').checked = !!cfg.micEnabled;
@@ -140,6 +142,7 @@ function reflectConfig() {
   $('privacyProcessNames').value = listToText(privacy.processNames);
   $('privacyTitlePatterns').value = listToText(privacy.titlePatterns);
   $('emergencyShortcut').textContent = cfg.emergencyStopShortcut || 'F9';
+  setSlider('micThreshold', cfg.micThreshold || 0.12, (v) => Number(v).toFixed(2), 'micThresholdLabel');
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
   setSlider('voiceReactivity', cfg.voiceReactivity, (v) => `声:${v}% / 画面:${100 - v}%`, 'vrLabel');
   setSlider('ambientPerMinute', cfg.ambientPerMinute, (v) => v + '個', 'ambLabel');
@@ -257,6 +260,20 @@ function bindControls() {
     if (running && cfg.micEnabled) startMic(); else stopMic();
     applyVisibility();
   });
+  $('micDeviceId').addEventListener('change', () => {
+    cfg.micDeviceId = $('micDeviceId').value;
+    patch({ micDeviceId: cfg.micDeviceId });
+    setCalibrationStatus('入力デバイスを切り替えました', 'ok');
+    restartMic();
+  });
+  $('refreshMicDevices').addEventListener('click', refreshMicDevices);
+  $('calibrateMic').addEventListener('click', calibrateMic);
+  $('micThreshold').addEventListener('input', () => {
+    const value = parseFloat($('micThreshold').value);
+    cfg.micThreshold = value;
+    $('micThresholdLabel').textContent = value.toFixed(2);
+    patch({ micThreshold: value });
+  });
   $('sttEnabled').addEventListener('change', () => {
     cfg.sttEnabled = $('sttEnabled').checked;
     patch({ sttEnabled: cfg.sttEnabled });
@@ -309,6 +326,9 @@ function bindControls() {
       patch({ safeZone: { [edge]: value } });
     });
   }
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', refreshMicDevices);
+  }
 }
 
 let patchTimer = null;
@@ -327,6 +347,92 @@ async function flushPatch(extra = {}) {
   if (!Object.keys(merged).length) return cfg;
   cfg = await window.ji.setConfig(merged);
   return cfg;
+}
+
+async function refreshMicDevices() {
+  const select = $('micDeviceId');
+  if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    setCalibrationStatus('音声入力デバイス一覧を取得できません', 'warn');
+    return;
+  }
+  const selected = cfg ? (cfg.micDeviceId || '') : (select.value || '');
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter((device) => device.kind === 'audioinput');
+    select.innerHTML = '';
+    select.appendChild(new Option('既定のマイク', ''));
+    inputs.forEach((device, index) => {
+      const label = device.label || `マイク ${index + 1}`;
+      select.appendChild(new Option(label, device.deviceId));
+    });
+    if (selected && !inputs.some((device) => device.deviceId === selected)) {
+      select.appendChild(new Option('選択中のマイク（未接続）', selected));
+    }
+    select.value = selected && isKnownSelectValue('micDeviceId', selected) ? selected : '';
+    select.disabled = inputs.length === 0;
+    if (inputs.length === 0) {
+      setCalibrationStatus('音声入力デバイスが見つかりません', 'warn');
+    }
+  } catch (e) {
+    setCalibrationStatus('デバイス一覧の取得に失敗: ' + e.message, 'warn');
+  }
+}
+
+function setCalibrationStatus(text, level) {
+  const el = $('micCalibrationStatus');
+  if (!el) return;
+  el.classList.remove('ok', 'warn');
+  if (level) el.classList.add(level);
+  el.textContent = text || '';
+}
+
+function selectedMicLabel() {
+  const select = $('micDeviceId');
+  const option = select && select.selectedOptions && select.selectedOptions[0];
+  return option ? option.textContent : '既定のマイク';
+}
+
+function audioConstraints() {
+  if (cfg && cfg.micDeviceId) {
+    return { audio: { deviceId: { exact: cfg.micDeviceId } } };
+  }
+  return { audio: true };
+}
+
+function isSelectedDeviceMissing(error) {
+  return cfg && cfg.micDeviceId && ['NotFoundError', 'OverconstrainedError', 'DevicesNotFoundError'].includes(error && error.name);
+}
+
+function micErrorMessage(error) {
+  if (!error) return 'マイク取得に失敗しました';
+  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+    return 'マイク権限が拒否されています。Windowsまたはブラウザの権限を確認してください';
+  }
+  if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
+    return '選択したマイクが見つかりません。デバイス更新または既定のマイクを選んでください';
+  }
+  if (error.name === 'NotReadableError') {
+    return 'マイクを開けません。他のアプリが使用中の可能性があります';
+  }
+  return 'マイク取得失敗: ' + error.message;
+}
+
+function clampMicThreshold(value) {
+  return Math.max(0.02, Math.min(0.4, value));
+}
+
+function computeCalibratedThreshold(samples) {
+  const levels = samples.filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
+  if (!levels.length) return { threshold: 0.12, noiseFloor: 0, peak: 0 };
+  const sum = levels.reduce((acc, value) => acc + value, 0);
+  const noiseFloor = sum / levels.length;
+  const peak = levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.95))] || 0;
+  const threshold = clampMicThreshold(Math.max(0.04, noiseFloor * 2.8, peak * 1.7));
+  return {
+    threshold: Number(threshold.toFixed(2)),
+    noiseFloor: Number(noiseFloor.toFixed(3)),
+    peak: Number(peak.toFixed(3))
+  };
 }
 
 function isWhisperModel(value) {
@@ -628,6 +734,7 @@ function setRunning(r) {
 
 let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null;
 let micStartToken = 0;
+let currentMicLevel = 0, micNoiseFrames = 0, calibrationActive = false;
 let lastTranscript = '', speaking = false, speakDecay = 0;
 
 // 取り込みサンプルレート: ローカルWhisperは16kHz、GPT Realtime Whisperは24kHz。
@@ -641,6 +748,20 @@ function sttSilenceChunks() { return Math.max(2, Math.round((cfg.sttSilenceMs ??
 function sttMinSamples() { return sttSR * 0.8; }   // 0.8秒未満は誤認識の元なので無視
 function sttMaxSamples() { return sttSR * ((cfg.sttMaxMs ?? 20000) / 1000); }
 
+async function requestMicStream() {
+  try {
+    return await navigator.mediaDevices.getUserMedia(audioConstraints());
+  } catch (e) {
+    if (!isSelectedDeviceMissing(e)) throw e;
+    setCalibrationStatus('選択したマイクが見つからないため、既定のマイクで再試行します', 'warn');
+    cfg.micDeviceId = '';
+    $('micDeviceId').value = '';
+    patch({ micDeviceId: '' });
+    await refreshMicDevices();
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+}
+
 async function startMic() {
   if (micStream) return;
   const token = ++micStartToken;
@@ -648,11 +769,13 @@ async function startMic() {
   setSttStatus(cfg.sttEnabled ? '待機中' : 'OFF', cfg.sttEnabled ? 'idle' : 'muted');
   let stream = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await requestMicStream();
   } catch (e) {
     if (token !== micStartToken || !running) return;
-    $('micInfo').textContent = 'マイク取得失敗: ' + e.message;
-    setMicStatus('許可エラー', 'error');
+    const message = micErrorMessage(e);
+    $('micInfo').textContent = message;
+    setCalibrationStatus(message, 'warn');
+    setMicStatus(e.name === 'NotAllowedError' ? '許可拒否' : '取得失敗', 'error');
     setSttStatus('停止', 'idle');
     return;
   }
@@ -662,6 +785,11 @@ async function startMic() {
     return;
   }
   micStream = stream;
+  await refreshMicDevices();
+  if (token !== micStartToken || !micStream || micStream !== stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    return;
+  }
   // バックエンドに合わせた取り込みレート（ローカル16k / GPT Realtime Whisper 24k）。
   sttSR = isOpenAiStt() ? 24000 : 16000;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sttSR });
@@ -680,18 +808,22 @@ async function startMic() {
       sum += v * v;
     }
     const level = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
+    currentMicLevel = level;
     $('vuBar').style.width = (level * 100).toFixed(0) + '%';
 
     const th = cfg.micThreshold || 0.12;
     const justSpoke = level > th && !speaking;
     if (level > th) { speaking = true; speakDecay = 18; }
     else if (speakDecay > 0) { speakDecay--; if (speakDecay === 0) speaking = false; }
+    updateMicNoiseHint(level, th);
 
     window.ji.sendMic({ level, speaking, justSpoke, transcript: lastTranscript });
     micRAF = requestAnimationFrame(loop);
   };
   loop();
-  $('micInfo').textContent = '🎤 マイク監視中';
+  const track = micStream.getAudioTracks()[0];
+  $('micInfo').textContent = `🎤 マイク監視中: ${(track && track.label) || selectedMicLabel()}`;
+  setCalibrationStatus(`しきい値 ${Number(cfg.micThreshold || 0.12).toFixed(2)}`, '');
   setMicStatus('監視中', 'active');
 
   // 生PCMを拾って発話の切れ目でWhisperに渡す。
@@ -709,6 +841,9 @@ async function startMic() {
 
 function stopMic() {
   micStartToken++;
+  currentMicLevel = 0;
+  micNoiseFrames = 0;
+  calibrationActive = false;
   if (micRAF) cancelAnimationFrame(micRAF);
   micRAF = null;
   if (scriptNode) { try { scriptNode.disconnect(); } catch {} scriptNode.onaudioprocess = null; scriptNode = null; }
@@ -720,6 +855,68 @@ function stopMic() {
   $('micInfo').textContent = 'マイク停止';
   stopStt();
   setMicStatus(cfg && cfg.micEnabled ? '停止' : 'OFF', cfg && cfg.micEnabled ? 'idle' : 'muted');
+}
+
+function restartMic() {
+  if (micStream) stopMic();
+  if (running && cfg.micEnabled) startMic();
+}
+
+function updateMicNoiseHint(level, threshold) {
+  if (calibrationActive || !running || !cfg.micEnabled) return;
+  const nearThreshold = level > Math.max(0.03, threshold * 0.75) && level <= threshold;
+  micNoiseFrames = nearThreshold ? micNoiseFrames + 1 : Math.max(0, micNoiseFrames - 2);
+  if (micNoiseFrames === 90) {
+    setCalibrationStatus('周囲音がしきい値に近いです。自動調整を試してください', 'warn');
+  }
+}
+
+async function calibrateMic() {
+  if (!micStream) {
+    setCalibrationStatus('字弾幕スタート後、静かな状態で実行してください', 'warn');
+    return;
+  }
+  calibrationActive = true;
+  micNoiseFrames = 0;
+  const button = $('calibrateMic');
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '測定中';
+  setCalibrationStatus('2.5秒だけ静かにしてください', 'warn');
+  const samples = [];
+  const startedAt = performance.now();
+  await new Promise((resolve) => {
+    const tick = () => {
+      samples.push(currentMicLevel);
+      if (!micStream || performance.now() - startedAt >= 2500) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  button.disabled = false;
+  button.textContent = originalText;
+  calibrationActive = false;
+  if (!micStream) {
+    setCalibrationStatus('測定中にマイクが停止しました', 'warn');
+    return;
+  }
+  const result = computeCalibratedThreshold(samples);
+  cfg.micThreshold = result.threshold;
+  setSlider('micThreshold', result.threshold, (v) => Number(v).toFixed(2), 'micThresholdLabel');
+  patch({
+    micThreshold: result.threshold,
+    micCalibration: {
+      noiseFloor: result.noiseFloor,
+      peak: result.peak,
+      calibratedAt: new Date().toISOString()
+    }
+  });
+  const level = result.peak > 0.18 ? 'warn' : 'ok';
+  const suffix = result.peak > 0.18 ? ' 周囲音が大きめです' : '';
+  setCalibrationStatus(`しきい値を ${result.threshold.toFixed(2)} に調整しました${suffix}`, level);
 }
 
 // ---- ローカルWhisper (Web Worker) --------------------------------------

@@ -15,8 +15,14 @@
 const { spawn } = require('child_process');
 const { extractJson, normalizeComments } = require('./json-comments');
 const { toneInstruction } = require('./comment-tone');
+const logger = require('../logger');
 
 const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+const DEFAULT_TURN_TIMEOUT_MS = 60000;
+const REQUEST_TIMEOUT_FLOOR_MS = 5000;
+const SERVER_RESTART_GRACE_MS = 5000;
+const MAX_TURNS_PER_SERVER = 24;
+const MAX_SERVER_AGE_MS = 10 * 60 * 1000;
 
 function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly, tone }) {
   const ctxLine = context && (context.title || context.process)
@@ -84,44 +90,71 @@ class AppServer {
     this.child = null;
     this.buf = '';
     this.nextId = 0;
-    this.pending = new Map();      // id -> {resolve}
+    this.pending = new Map();      // id -> {resolve, reject, timer, method}
     this.turnHandler = null;       // 進行中の turn 通知の受け手
     this.ready = null;             // initialize 完了の Promise
+    this.threadId = '';
+    this.threadModel = '';
+    this.threadKey = '';
+    this.startedAt = 0;
+    this.turnsOnServer = 0;
+    this.restartCount = 0;
   }
 
   // 既に起動済みなら再利用。落ちていたら起動し直す。
-  async ensure() {
+  async ensure(timeoutMs) {
     if (this.child && !this.child.killed && this.ready) {
-      try { await this.ready; return; } catch { /* 再起動へ */ }
+      try {
+        await this.ready;
+        return;
+      } catch (e) {
+        this.restart(`ready failed: ${e.message}`);
+      }
     }
-    this.start();
+    this.start(timeoutMs);
     await this.ready;
   }
 
-  start() {
+  start(timeoutMs) {
     this.buf = '';
-    this.pending.clear();
+    this._rejectPending(new Error('app-server restarting'));
     this.turnHandler = null;
+    this.threadId = '';
+    this.threadModel = '';
+    this.threadKey = '';
+    this.turnsOnServer = 0;
 
-    const child = spawn(CODEX_BIN, ['app-server'], { shell: true, windowsHide: true });
+    const child = spawn(CODEX_BIN, ['app-server'], appServerSpawnOptions());
     this.child = child;
+    this.startedAt = Date.now();
 
     child.stdout.on('data', (d) => this._onData(d));
     child.stderr.on('data', () => { /* モデル一覧取得失敗等のノイズは無視 */ });
     child.on('exit', () => {
+      if (this.child !== child) return;
       this.child = null;
       this.ready = null;
-      for (const { reject } of this.pending.values()) reject(new Error('app-server exited'));
-      this.pending.clear();
+      this.threadId = '';
+      this.threadModel = '';
+      this.threadKey = '';
+      this._rejectPending(new Error('app-server exited'));
     });
-    child.on('error', () => { this.child = null; this.ready = null; });
+    child.on('error', () => {
+      if (this.child !== child) return;
+      this.child = null;
+      this.ready = null;
+      this.threadId = '';
+      this.threadModel = '';
+      this.threadKey = '';
+      this._rejectPending(new Error('app-server error'));
+    });
 
     // ハンドシェイク: initialize → initialized
     this.ready = (async () => {
       await this._request('initialize', {
         clientInfo: { name: 'ji-danmaku', title: 'Ji-Danmaku', version: '0.1.0' },
         capabilities: { experimentalApi: true, requestAttestation: false }
-      });
+      }, requestTimeoutMs(timeoutMs));
       this._notify('initialized');
     })();
   }
@@ -144,6 +177,7 @@ class AppServer {
     if (m.id !== undefined && (m.result !== undefined || m.error !== undefined)) {
       const p = this.pending.get(m.id);
       if (p) {
+        clearTimeout(p.timer);
         this.pending.delete(m.id);
         if (m.error) p.reject(new Error(JSON.stringify(m.error).slice(0, 200)));
         else p.resolve(m.result);
@@ -160,15 +194,27 @@ class AppServer {
   }
 
   _send(obj) {
-    if (!this.child || !this.child.stdin.writable) return;
+    if (!this.child || !this.child.stdin.writable) return false;
     this.child.stdin.write(JSON.stringify(obj) + '\n');
+    return true;
   }
 
-  _request(method, params) {
+  _request(method, params, timeoutMs = DEFAULT_TURN_TIMEOUT_MS) {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this._send({ method, id, params });
+      const timer = setTimeout(() => {
+        if (!this.pending.has(id)) return;
+        this.pending.delete(id);
+        const err = new Error(`${method} timeout after ${timeoutMs}ms`);
+        err.code = 'CODEX_REQUEST_TIMEOUT';
+        reject(err);
+      }, Math.max(REQUEST_TIMEOUT_FLOOR_MS, timeoutMs));
+      this.pending.set(id, { resolve, reject, timer, method });
+      if (!this._send({ method, id, params })) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(new Error('app-server stdin not writable'));
+      }
     });
   }
 
@@ -176,19 +222,27 @@ class AppServer {
     this._send(params === undefined ? { method } : { method, params });
   }
 
-  // 1回の生成: ephemeral スレッド + turn を回し、エージェントの最終メッセージを返す。
-  async runTurn({ promptText, imagePath, model, timeoutMs }) {
-    await this.ensure();
+  // app-server 内の ephemeral スレッドを短時間だけ再利用し、子プロセス増殖を抑える。
+  // 生成が詰まった場合は runTurn 全体のタイムアウトで app-server ツリーごと再起動する。
+  async runTurn({ promptText, imagePath, model, timeoutMs, voiceOnly }) {
+    const limitMs = turnTimeoutMs(timeoutMs);
+    try {
+      return await withTimeout(
+        this._runTurn({ promptText, imagePath, model, timeoutMs: limitMs, voiceOnly }),
+        limitMs + SERVER_RESTART_GRACE_MS,
+        'codex app-server turn'
+      );
+    } catch (e) {
+      this.restart(`turn failed: ${e.message}`);
+      throw e;
+    }
+  }
 
-    const thread = await this._request('thread/start', {
-      sandbox: 'read-only',
-      ephemeral: true,
-      cwd: process.cwd(),
-      ...(model ? { model } : {})
-    });
-    const threadId =
-      (thread && thread.thread && thread.thread.id) || (thread && thread.threadId);
-    if (!threadId) throw new Error('thread/start: no id');
+  async _runTurn({ promptText, imagePath, model, timeoutMs, voiceOnly }) {
+    if (this.shouldRecycle()) this.restart('scheduled recycle');
+    await this.ensure(timeoutMs);
+
+    const threadId = await this.ensureThread({ model, timeoutMs, voiceOnly });
 
     const input = [{ type: 'text', text: promptText, text_elements: [] }];
     if (imagePath) input.push({ type: 'localImage', path: imagePath });
@@ -207,7 +261,9 @@ class AppServer {
 
       const timer = setTimeout(() => {
         try { this._notify('turn/interrupt', { threadId }); } catch {}
-        finish(finalText || acc); // 取れた分だけ返す（無ければ後段で mock）
+        const err = new Error(`turn/start timeout after ${timeoutMs}ms`);
+        err.code = 'CODEX_TURN_TIMEOUT';
+        finish(finalText || acc, err);
       }, timeoutMs || 60000);
 
       this.turnHandler = (m) => {
@@ -229,12 +285,134 @@ class AppServer {
         }
       };
 
-      this._request('turn/start', {
-        threadId,
-        input,
-        effort: 'low'
-      }).catch((e) => finish(null, e));
+      try {
+        this._request('turn/start', {
+          threadId,
+          input,
+          effort: 'low'
+        }, requestTimeoutMs(timeoutMs)).catch((e) => finish(null, e));
+      } catch (e) {
+        finish(null, e);
+      }
     });
+  }
+
+  async ensureThread({ model, timeoutMs, voiceOnly }) {
+    const threadKey = `${model || ''}:${voiceOnly ? 'voice-only' : 'screen-aware'}`;
+    if (this.threadId && this.threadKey === threadKey) return this.threadId;
+    const thread = await this._request('thread/start', {
+      sandbox: 'read-only',
+      ephemeral: true,
+      cwd: process.cwd(),
+      ...(model ? { model } : {})
+    }, requestTimeoutMs(timeoutMs));
+    const threadId =
+      (thread && thread.thread && thread.thread.id) || (thread && thread.threadId);
+    if (!threadId) throw new Error('thread/start: no id');
+    this.threadId = threadId;
+    this.threadModel = model || '';
+    this.threadKey = threadKey;
+    this.turnsOnServer = 0;
+    return threadId;
+  }
+
+  markTurnCompleted() {
+    this.turnsOnServer++;
+  }
+
+  shouldRecycle(now = Date.now()) {
+    if (!this.child || this.child.killed) return false;
+    if (this.turnsOnServer >= MAX_TURNS_PER_SERVER) return true;
+    return this.startedAt > 0 && now - this.startedAt >= MAX_SERVER_AGE_MS;
+  }
+
+  restart(reason = 'restart') {
+    const child = this.child;
+    const pid = child && child.pid;
+    this.restartCount++;
+    this.child = null;
+    this.ready = null;
+    this.threadId = '';
+    this.threadModel = '';
+    this.threadKey = '';
+    this.turnHandler = null;
+    this.buf = '';
+    this.turnsOnServer = 0;
+    this._rejectPending(new Error(reason));
+    if (pid) {
+      logger.warn('codex.app_server_restart', { reason, pid, restartCount: this.restartCount });
+      killProcessTree(pid);
+    }
+  }
+
+  _rejectPending(err) {
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(err);
+    }
+    this.pending.clear();
+  }
+
+  status() {
+    return {
+      serverRunning: !!(this.child && !this.child.killed),
+      pid: this.child && this.child.pid ? this.child.pid : 0,
+      pendingRequests: this.pending.size,
+      threadActive: !!this.threadId,
+      turnsOnServer: this.turnsOnServer,
+      startedAt: this.startedAt,
+      restartCount: this.restartCount
+    };
+  }
+}
+
+function turnTimeoutMs(timeoutMs) {
+  return Math.max(REQUEST_TIMEOUT_FLOOR_MS, timeoutMs || DEFAULT_TURN_TIMEOUT_MS);
+}
+
+function requestTimeoutMs(timeoutMs) {
+  return Math.max(REQUEST_TIMEOUT_FLOOR_MS, Math.min(turnTimeoutMs(timeoutMs), 30000));
+}
+
+function appServerSpawnOptions(platform = process.platform) {
+  if (platform === 'win32') return { shell: true, windowsHide: true };
+  return { detached: true, windowsHide: true };
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`${label} timeout after ${timeoutMs}ms`);
+        err.code = 'CODEX_TOTAL_TIMEOUT';
+        reject(err);
+      }, timeoutMs);
+    })
+  ]);
+}
+
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore'
+    });
+    killer.on('error', () => {});
+    killer.unref();
+    return;
+  }
+  signalProcessTree(pid, 'SIGTERM');
+  setTimeout(() => signalProcessTree(pid, 'SIGKILL'), 1500).unref();
+}
+
+function signalProcessTree(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try { process.kill(pid, signal); } catch {}
   }
 }
 
@@ -264,7 +442,8 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
   lastGenAt = now;
   try {
     const promptText = buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly, tone });
-    const text = await server.runTurn({ promptText, imagePath, model, timeoutMs });
+    const text = await server.runTurn({ promptText, imagePath, model, timeoutMs, voiceOnly });
+    server.markTurnCompleted();
     const parsed = extractJson(text || '');
     if (!parsed) {
       warnOnce('JSON を取得できませんでした');
@@ -291,13 +470,13 @@ function warnOnce(msg) {
 
 // アプリ終了時にサーバを落とすためのフック。
 function shutdown() {
-  try { if (server.child) server.child.kill(); } catch {}
+  try { server.restart('shutdown'); } catch {}
 }
 
 function status() {
   const now = Date.now();
   return {
-    serverRunning: !!(server.child && !server.child.killed),
+    ...server.status(),
     busy,
     warned,
     consecutiveFails,
@@ -306,4 +485,15 @@ function status() {
   };
 }
 
-module.exports = { generate, shutdown, status };
+module.exports = {
+  generate,
+  shutdown,
+  status,
+  __test: {
+    AppServer,
+    appServerSpawnOptions,
+    requestTimeoutMs,
+    turnTimeoutMs,
+    withTimeout
+  }
+};

@@ -18,7 +18,7 @@ const SYSTEM = [
   'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意),"small":true(任意),"pos":"ue"|"shita"(任意)}]}'
 ].join('');
 
-async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, tone, model, maxTokens }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, tone, model, maxTokens, signal }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
@@ -60,7 +60,8 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
         max_tokens: maxTokens || 400,
         system: SYSTEM,
         messages: [{ role: 'user', content }]
-      })
+      }),
+      signal
     });
     if (!res.ok) {
       console.error('[anthropic] HTTP', res.status);
@@ -82,6 +83,7 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
         }
       }));
   } catch (e) {
+    if (e && e.name === 'AbortError') return null;
     console.error('[anthropic] 失敗:', e.message);
     return null;
   }

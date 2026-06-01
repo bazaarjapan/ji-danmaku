@@ -79,3 +79,8 @@ test('defaultConfig returns a deep clone', () => {
   first.codex.timeoutMs = 1;
   assert.equal(defaultConfig().codex.timeoutMs, DEFAULTS.codex.timeoutMs);
 });
+
+test('default voice reactivity starts at a voice-forward balance', () => {
+  assert.equal(DEFAULTS.voiceReactivity, 70);
+  assert.equal(defaultConfig().voiceReactivity, 70);
+});

@@ -9,9 +9,10 @@ const mock = require('./mock');
 const logger = require('../logger');
 
 // AI ブレインで弾幕バッチを生成。常に配列を返す（最悪 mock）。
-async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus, voiceOnly }) {
+async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus, voiceOnly }, options = {}) {
   const n = count || cfg.commentsPerBatch || 10;
   const brain = cfg.brain || 'codex';
+  const signal = options.signal;
 
   let result = null;
   let errorMessage = '';
@@ -31,7 +32,8 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
         count: n, context, transcript, imagePath, recent, voiceFocus, voiceOnly,
         tone: cfg.commentTone,
         model: cfg.anthropic && cfg.anthropic.model,
-        maxTokens: cfg.anthropic && cfg.anthropic.maxTokens
+        maxTokens: cfg.anthropic && cfg.anthropic.maxTokens,
+        signal
       });
     }
   } catch (e) {
@@ -62,4 +64,10 @@ function status() {
   };
 }
 
-module.exports = { generateBatch, mock, status };
+function shutdown(brain) {
+  if (!brain || brain === 'codex') {
+    try { codex.shutdown(); } catch {}
+  }
+}
+
+module.exports = { generateBatch, mock, status, shutdown };

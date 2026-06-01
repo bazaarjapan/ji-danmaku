@@ -15,6 +15,8 @@ const DEFAULTS = {
   // AI ブレイン: 'codex' | 'anthropic' | 'mock'
   // 利用可能なものへ自動フォールバックする（main.js 側で解決）。
   brain: 'codex',
+  // UIプリセット。'custom' は手動調整状態。
+  preset: 'custom',
 
   // 画面を見て弾幕を生成する間隔(ms)。短いほど反応が良いがコスト/負荷増。
   // Codex は1回 ~20秒かかるため既定はやや長め。生成中は次サイクルを自動スキップ。

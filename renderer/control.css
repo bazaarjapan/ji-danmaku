@@ -421,6 +421,63 @@ footer { margin-top: 4px; }
 }
 .mic-actions button.ghost { background: var(--line); color: var(--ink); }
 .mic-actions button:disabled { opacity: .55; cursor: default; }
+.ng-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ng-add-row input {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11131a;
+  color: var(--ink);
+}
+.ng-add-row button,
+button.full {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent2);
+  color: #06222e;
+  font-weight: 700;
+  cursor: pointer;
+}
+button.ghost.full {
+  width: 100%;
+  background: var(--line);
+  color: var(--ink);
+}
+.ng-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.ng-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #11131a;
+  color: var(--ink);
+  font-size: 12px;
+}
+.ng-chip span { overflow-wrap: anywhere; }
+.ng-chip button {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--ink);
+  cursor: pointer;
+}
 #sttOptions { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--line); }
 
 .cost { color: var(--warn); font-weight: 600; }

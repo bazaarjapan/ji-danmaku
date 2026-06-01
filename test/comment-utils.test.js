@@ -5,7 +5,8 @@ const test = require('node:test');
 const {
   dedupeAiComments,
   filterNgComments,
-  normalizeCommentText
+  normalizeCommentText,
+  normalizeNgWords
 } = require('../electron/comment-utils');
 
 test('normalizeCommentText removes spacing and trailing live-chat punctuation', () => {
@@ -43,6 +44,11 @@ test('filterNgComments drops comments containing configured words', () => {
   assert.deepEqual(result.map((comment) => comment.text), ['これはOK', '888']);
 });
 
+test('normalizeNgWords trims blanks and removes duplicates', () => {
+  assert.deepEqual(normalizeNgWords([' 黙れ ', '', '黙れ', 'KIMOI', 'kimoi']), ['黙れ', 'KIMOI']);
+  assert.deepEqual(normalizeNgWords('死ね\n 消えろ,\n死ね'), ['死ね', '消えろ']);
+});
+
 test('filterNgComments masks configured words without dropping comments', () => {
   const input = [
     { text: 'それはキモいかも', style: { color: '#fff' } }
@@ -53,4 +59,18 @@ test('filterNgComments masks configured words without dropping comments', () => 
   assert.deepEqual(result, [
     { text: 'それは〇〇〇かも', style: { color: '#fff' } }
   ]);
+});
+
+test('filterNgComments matches latin NG words case-insensitively', () => {
+  const input = [
+    { text: 'spam text' },
+    { text: 'SPAM text' },
+    { text: 'clean' }
+  ];
+
+  const dropped = filterNgComments(input, { ngWords: ['Spam'], ngMode: 'drop' });
+  assert.deepEqual(dropped.map((comment) => comment.text), ['clean']);
+
+  const masked = filterNgComments([{ text: 'SPAM spam' }], { ngWords: ['Spam'], ngMode: 'mask' });
+  assert.deepEqual(masked.map((comment) => comment.text), ['〇〇〇〇 〇〇〇〇']);
 });

@@ -145,6 +145,18 @@ const DEFAULTS = {
   }
 };
 
+const SECRET_CONFIG_KEYS = new Set([
+  'openaiApiKey',
+  'openaiApiKeyEncrypted',
+  'openaiApiKeyConfigured',
+  'openaiApiKeySource',
+  'openaiApiKeyStorageAvailable'
+]);
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function deepMerge(base, override) {
   if (typeof override !== 'object' || override === null) return base;
   const out = Array.isArray(base) ? [...base] : { ...base };
@@ -161,6 +173,43 @@ function deepMerge(base, override) {
     }
   }
   return out;
+}
+
+function sanitizeByDefaults(value, defaults) {
+  if (typeof value !== 'object' || value === null || typeof defaults !== 'object' || defaults === null) return undefined;
+  const out = Array.isArray(defaults) ? [] : {};
+  for (const key of Object.keys(defaults)) {
+    if (SECRET_CONFIG_KEYS.has(key) || !Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const source = value[key];
+    const def = defaults[key];
+    if (Array.isArray(def)) {
+      if (Array.isArray(source)) out[key] = source.map((item) => String(item || '').trim()).filter(Boolean);
+      continue;
+    }
+    if (def === null) {
+      if (source === null || typeof source === 'number') out[key] = source;
+      continue;
+    }
+    if (typeof def === 'object') {
+      const child = sanitizeByDefaults(source, def);
+      if (child && Object.keys(child).length) out[key] = child;
+      continue;
+    }
+    if (typeof source === typeof def) out[key] = source;
+  }
+  return out;
+}
+
+function sanitizeImportedConfig(value) {
+  return sanitizeByDefaults(value, DEFAULTS) || {};
+}
+
+function exportableConfig(value) {
+  return sanitizeByDefaults(value, DEFAULTS) || {};
+}
+
+function defaultConfig() {
+  return cloneJson(DEFAULTS);
 }
 
 function load() {
@@ -183,4 +232,14 @@ function save(cfg) {
   }
 }
 
-module.exports = { DEFAULTS, CONFIG_DIR, CONFIG_PATH, load, save, deepMerge };
+module.exports = {
+  DEFAULTS,
+  CONFIG_DIR,
+  CONFIG_PATH,
+  load,
+  save,
+  deepMerge,
+  sanitizeImportedConfig,
+  exportableConfig,
+  defaultConfig
+};

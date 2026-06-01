@@ -324,6 +324,9 @@ function bindControls() {
   $('copyDiagnostics').addEventListener('click', copyDiagnostics);
   $('exportDiagnostics').addEventListener('click', exportDiagnostics);
   $('runSetupDiagnostics').addEventListener('click', runSetupDiagnostics);
+  $('exportConfig').addEventListener('click', exportConfigFile);
+  $('importConfig').addEventListener('click', importConfigFile);
+  $('resetConfig').addEventListener('click', resetConfigDefaults);
   $('emergencyStop').addEventListener('click', emergencyStop);
 
   $('preset').addEventListener('change', () => applyPreset($('preset').value));
@@ -755,6 +758,14 @@ function setDiagnosticsStatus(text, level) {
   el.textContent = text || '';
 }
 
+function setConfigFileStatus(text, level) {
+  const el = $('configFileStatus');
+  if (!el) return;
+  el.classList.remove('ok', 'warn');
+  if (level) el.classList.add(level);
+  el.textContent = text || '';
+}
+
 function setEmergencyStatus(text, level) {
   const el = $('emergencyStatus');
   if (!el) return;
@@ -890,6 +901,62 @@ async function runSetupDiagnostics() {
   } finally {
     button.disabled = false;
     button.textContent = originalText;
+  }
+}
+
+async function applyConfigSnapshot(nextConfig) {
+  const restartMicAfter = !!micStream;
+  if (restartMicAfter) stopMic();
+  cfg = nextConfig;
+  await refreshMicDevices();
+  reflectConfig();
+  applyVisibility();
+  if (running && cfg.micEnabled) startMic();
+  else setStoppedInputStatus();
+}
+
+async function exportConfigFile() {
+  try {
+    const result = await window.ji.exportConfig();
+    if (result.canceled) {
+      setConfigFileStatus('キャンセルしました', 'warn');
+      return;
+    }
+    setConfigFileStatus(`保存しました: ${result.file}`, 'ok');
+  } catch (e) {
+    setConfigFileStatus(e.message || '設定のエクスポートに失敗しました', 'warn');
+  }
+}
+
+async function importConfigFile() {
+  try {
+    const result = await window.ji.importConfig();
+    if (result.canceled) {
+      setConfigFileStatus('キャンセルしました', 'warn');
+      return;
+    }
+    if (result.error) {
+      setConfigFileStatus(result.error, 'warn');
+      return;
+    }
+    await applyConfigSnapshot(result.config);
+    setConfigFileStatus(`読み込みました: ${result.file}`, 'ok');
+  } catch (e) {
+    setConfigFileStatus(e.message || '設定のインポートに失敗しました', 'warn');
+  }
+}
+
+async function resetConfigDefaults() {
+  try {
+    const result = await window.ji.resetConfig();
+    if (result.canceled) {
+      setConfigFileStatus('キャンセルしました', 'warn');
+      return;
+    }
+    await applyConfigSnapshot(result.config);
+    setConfigFileStatus('既定値に戻しました', 'ok');
+  } catch (e) {
+    setConfigFileStatus(e.message || '設定のリセットに失敗しました', 'warn');
   }
 }
 

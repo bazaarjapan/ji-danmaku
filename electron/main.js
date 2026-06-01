@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage, Tray, Menu, nativeImage, dialog } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -792,6 +792,9 @@ function broadcastRunning() {
 ipcMain.handle('get-config', () => publicConfig());
 ipcMain.handle('get-runtime-diagnostics', () => runtimeDiagnosticsSnapshot());
 ipcMain.handle('run-setup-diagnostics', runSetupDiagnostics);
+ipcMain.handle('export-config', exportConfigToFile);
+ipcMain.handle('import-config', importConfigFromFile);
+ipcMain.handle('reset-config', resetConfigToDefaults);
 
 function configSummaryForDiagnostics() {
   const keyState = openAiApiKeyState();
@@ -980,8 +983,7 @@ async function runSetupDiagnostics() {
   return { status, checks, updatedAt };
 }
 
-ipcMain.handle('set-config', (_e, patch) => {
-  const hadMulti = cfg.multiMonitor;
+function normalizeConfigPatch(patch) {
   const nextPatch = { ...(patch || {}) };
   const keyChanged = Object.prototype.hasOwnProperty.call(nextPatch, 'openaiApiKey');
   const modelChanged = Object.prototype.hasOwnProperty.call(nextPatch, 'openaiSttModel');
@@ -989,16 +991,17 @@ ipcMain.handle('set-config', (_e, patch) => {
     storeOpenAiApiKey(nextPatch.openaiApiKey);
     delete nextPatch.openaiApiKey;
   }
+  delete nextPatch.openaiApiKeyEncrypted;
   if (Object.prototype.hasOwnProperty.call(nextPatch, 'ngWords')) {
     nextPatch.ngWords = normalizeNgWords(nextPatch.ngWords);
   }
   if (Object.prototype.hasOwnProperty.call(nextPatch, 'ngMode') && !['drop', 'mask'].includes(nextPatch.ngMode)) {
     nextPatch.ngMode = 'drop';
   }
-  cfg = configStore.deepMerge(cfg, nextPatch);
-  const saved = configStore.save(cfg);
-  if (!saved) logger.error('config.save_failed', { keys: Object.keys(nextPatch) });
-  // 音声認識バックエンド/モデルの変更を反映。openai以外に切替えたらWSを閉じる。
+  return { nextPatch, keyChanged, modelChanged };
+}
+
+function afterConfigChanged(nextPatch, hadMulti, keyChanged, modelChanged) {
   configureOpenAiStt();
   if (cfg.sttBackend !== 'openai' || keyChanged || modelChanged) openaiStt.close();
   updateRuntimeDiagnostics({
@@ -1014,18 +1017,110 @@ ipcMain.handle('set-config', (_e, patch) => {
       shortcut: cfg.emergencyStopShortcut || 'F9'
     }
   });
-  // マルチモニター設定が変わったらオーバーレイを作り直す（スタイルは生成側で再送）。
   if (nextPatch && 'multiMonitor' in nextPatch && nextPatch.multiMonitor !== hadMulti) {
     createOverlays();
   } else {
     setOverlayStyle();
   }
-  // 間隔変更を反映
   if (running) {
     clearInterval(captureTimer);
     captureTimer = setInterval(captureCycle, Math.max(3000, cfg.captureIntervalMs));
   }
+}
+
+function applyConfigPatch(patch) {
+  const hadMulti = cfg.multiMonitor;
+  const { nextPatch, keyChanged, modelChanged } = normalizeConfigPatch(patch);
+  cfg = configStore.deepMerge(cfg, nextPatch);
+  const saved = configStore.save(cfg);
+  if (!saved) logger.error('config.save_failed', { keys: Object.keys(nextPatch) });
+  afterConfigChanged(nextPatch, hadMulti, keyChanged, modelChanged);
   return publicConfig();
+}
+
+function replaceConfig(nextConfig) {
+  const hadMulti = cfg.multiMonitor;
+  cfg = configStore.defaultConfig();
+  cfg = configStore.deepMerge(cfg, configStore.sanitizeImportedConfig(nextConfig || {}));
+  const saved = configStore.save(cfg);
+  if (!saved) logger.error('config.save_failed', { source: 'replaceConfig' });
+  afterConfigChanged(cfg, hadMulti, true, true);
+  return publicConfig();
+}
+
+function configDialogParent() {
+  return controlWin && !controlWin.isDestroyed() ? controlWin : undefined;
+}
+
+function configExportPayload() {
+  return {
+    app: 'ji-danmaku',
+    version: app.getVersion(),
+    exportedAt: new Date().toISOString(),
+    config: configStore.exportableConfig(cfg)
+  };
+}
+
+async function exportConfigToFile() {
+  const result = await dialog.showSaveDialog(configDialogParent(), {
+    title: '設定をエクスポート',
+    defaultPath: `ji-danmaku-config-${new Date().toISOString().slice(0, 10)}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  const payload = configExportPayload();
+  fs.writeFileSync(result.filePath, JSON.stringify(payload, null, 2), 'utf8');
+  logger.info('config.exported', { file: result.filePath });
+  return { canceled: false, file: result.filePath };
+}
+
+function parseImportedConfigFile(filePath) {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const parsed = JSON.parse(raw);
+  const source = parsed && typeof parsed === 'object' && parsed.config && typeof parsed.config === 'object'
+    ? parsed.config
+    : parsed;
+  const sanitized = configStore.sanitizeImportedConfig(source);
+  if (!Object.keys(sanitized).length) throw new Error('有効な設定項目がありません');
+  return sanitized;
+}
+
+async function importConfigFromFile() {
+  const result = await dialog.showOpenDialog(configDialogParent(), {
+    title: '設定をインポート',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths[0]) return { canceled: true };
+  try {
+    const imported = parseImportedConfigFile(result.filePaths[0]);
+    const next = applyConfigPatch(imported);
+    logger.info('config.imported', { file: result.filePaths[0], keys: Object.keys(imported) });
+    return { canceled: false, file: result.filePaths[0], config: next };
+  } catch (e) {
+    logger.warn('config.import_failed', { file: result.filePaths[0], message: e.message });
+    return { canceled: false, error: e.message || '設定のインポートに失敗しました' };
+  }
+}
+
+async function resetConfigToDefaults() {
+  const result = await dialog.showMessageBox(configDialogParent(), {
+    type: 'warning',
+    buttons: ['リセット', 'キャンセル'],
+    cancelId: 1,
+    defaultId: 1,
+    title: '設定をリセット',
+    message: '設定を既定値に戻します',
+    detail: '保存済みのOpenAI APIキーも削除されます。'
+  });
+  if (result.response !== 0) return { canceled: true };
+  const next = replaceConfig(configStore.defaultConfig());
+  logger.warn('config.reset_to_defaults');
+  return { canceled: false, config: next };
+}
+
+ipcMain.handle('set-config', (_e, patch) => {
+  return applyConfigPatch(patch);
 });
 
 ipcMain.handle('toggle', (_e, on) => {

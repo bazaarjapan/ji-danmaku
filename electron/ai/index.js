@@ -19,6 +19,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
     if (brain === 'codex') {
       result = await codex.generate({
         count: n, context, transcript, imagePath, recent, voiceFocus, voiceOnly,
+        tone: cfg.commentTone,
         model: cfg.codex && cfg.codex.model,
         timeoutMs: cfg.codex && cfg.codex.timeoutMs,
         minIntervalMs: cfg.codex && cfg.codex.minIntervalMs,
@@ -28,6 +29,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
     } else if (brain === 'anthropic') {
       result = await anthropic.generate({
         count: n, context, transcript, imagePath, recent, voiceFocus, voiceOnly,
+        tone: cfg.commentTone,
         model: cfg.anthropic && cfg.anthropic.model,
         maxTokens: cfg.anthropic && cfg.anthropic.maxTokens
       });
@@ -48,7 +50,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
   return {
     source: 'mock',
     requestedBrain: brain,
-    comments: mock.generate(n, context || {}),
+    comments: mock.generate(n, context || {}, cfg.commentTone),
     fallbackFrom: brain !== 'mock' ? brain : '',
     error: errorMessage || (brain !== 'mock' ? 'AI生成結果が空のためmockへフォールバック' : '')
   };

@@ -4,6 +4,7 @@
 // 環境変数 ANTHROPIC_API_KEY が必要。SDK 不要、fetch で直接叩く。
 
 const fs = require('fs');
+const { toneInstruction } = require('./comment-tone');
 
 const SYSTEM = [
   'あなたはライブ配信を今まさに見ている大勢の匿名視聴者です。',
@@ -17,7 +18,7 @@ const SYSTEM = [
   'JSON のみを返す: {"comments":[{"text":"...","color":"#rrggbb"(任意),"big":true(任意),"small":true(任意),"pos":"ue"|"shita"(任意)}]}'
 ].join('');
 
-async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, model, maxTokens }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, tone, model, maxTokens }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
 
@@ -43,7 +44,7 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
     : `配信者の発話は今ありません。画面の"今"に【控えめに】触れる弾幕を${count}個(出しすぎない)。`;
   content.push({
     type: 'text',
-    text: `${focus}${ctx}${avoid} JSONのみで返す。`
+    text: `${focus}${ctx}${avoid} トーン:${toneInstruction(tone)} JSONのみで返す。`
   });
 
   try {

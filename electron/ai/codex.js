@@ -14,10 +14,11 @@
 
 const { spawn } = require('child_process');
 const { extractJson, normalizeComments } = require('./json-comments');
+const { toneInstruction } = require('./comment-tone');
 
 const CODEX_BIN = process.platform === 'win32' ? 'codex.cmd' : 'codex';
 
-function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly }) {
+function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly, tone }) {
   const ctxLine = context && (context.title || context.process)
     ? `前面アプリ: ${context.process || ''} / ウィンドウ: ${context.title || ''}`
     : '前面アプリ情報なし';
@@ -58,6 +59,7 @@ function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly
     ...focus,
     '',
     '出し方:',
+    `- トーン: ${toneInstruction(tone)}`,
     `- ${count}個ちょうど。1個ずつ別人が書いた体で、口調もテンションもバラけさせる`,
     '- 各コメントは日本語で最大20文字程度、口語で短く(ライブチャット感)',
     '- 反応の種類を混ぜる: ツッコミ / 共感(わかる・それな) / 質問 / 感心 / 実況 /',
@@ -253,7 +255,7 @@ function noteFailure(maxFailures, backoffMs) {
 }
 
 // 戻り値: [{ text, style:{color?,big?} }, ...]  失敗/抑制時は null（main側でmockへフォールバック）
-async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
+async function generate({ count, context, transcript, imagePath, recent, voiceFocus, voiceOnly, tone, model, timeoutMs, minIntervalMs, maxFailures, backoffMs }) {
   if (busy) return null;                                   // 多重実行を防止（main 側でもガード済み）
   const now = Date.now();
   if (now < backoffUntil) return null;                     // バックオフ中はスキップ
@@ -261,7 +263,7 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
   busy = true;
   lastGenAt = now;
   try {
-    const promptText = buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly });
+    const promptText = buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly, tone });
     const text = await server.runTurn({ promptText, imagePath, model, timeoutMs });
     const parsed = extractJson(text || '');
     if (!parsed) {

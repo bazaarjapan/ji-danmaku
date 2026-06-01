@@ -30,6 +30,8 @@ const DEFAULTS = {
   // 声 ↔ 画面 の反応バランス(0-100)。
   // 100 = 声だけに反応(画面のみの弾幕は出さない) / 0 = 画面だけに反応(声は無視) / 中間はブレンド。
   voiceReactivity: 60,
+  // 弾幕の雰囲気: balanced/gentle/tsukkomi/kusa/live/polite/calm
+  commentTone: 'balanced',
 
   // NGワード/コメントフィルタ: 不適切語を含む弾幕を除外/伏字化する（AI・mock両方に適用）。
   ngMode: 'drop',         // 'drop' = 該当弾幕を除外 / 'mask' = 該当語を〇で伏字化

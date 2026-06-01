@@ -121,6 +121,7 @@ async function init() {
 function reflectConfig() {
   $('preset').value = PRESETS[cfg.preset] ? cfg.preset : 'custom';
   $('brain').value = cfg.brain;
+  $('commentTone').value = isKnownSelectValue('commentTone', cfg.commentTone) ? cfg.commentTone : 'balanced';
   $('ambientEnabled').checked = cfg.ambientEnabled !== false;
   $('ambientPerMinute').disabled = cfg.ambientEnabled === false;
   $('micEnabled').checked = !!cfg.micEnabled;
@@ -245,6 +246,7 @@ function bindControls() {
 
   $('preset').addEventListener('change', () => applyPreset($('preset').value));
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
+  $('commentTone').addEventListener('change', () => patch({ commentTone: $('commentTone').value }));
   $('ambientEnabled').addEventListener('change', () => {
     patch(presetControlledPatch({ ambientEnabled: $('ambientEnabled').checked }));
     applyVisibility();  // フィラーOFFで密度スライダーを隠す
@@ -329,6 +331,10 @@ async function flushPatch(extra = {}) {
 
 function isWhisperModel(value) {
   return Array.from($('whisperModel').options).some((option) => option.value === value);
+}
+
+function isKnownSelectValue(id, value) {
+  return Array.from($(id).options).some((option) => option.value === value);
 }
 
 function setSettingsOpen(open) {

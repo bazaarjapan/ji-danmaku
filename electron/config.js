@@ -109,6 +109,13 @@ const DEFAULTS = {
   speedMs: 8000,          // 画面端から端まで流れる時間(ms)。小さいほど速い。
   opacity: 0.92,          // 弾幕の不透明度
   maxOnScreen: 120,       // 同時表示の上限（負荷ガード）
+  // 弾幕を流してよい画面範囲の余白(px)。字幕欄、ゲームUI、通知領域を避けるために使う。
+  safeZone: {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0
+  },
 
   // Codex 設定
   codex: {

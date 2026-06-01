@@ -87,6 +87,10 @@ function reflectConfig() {
   setSlider('speedMs', cfg.speedMs, (v) => (v / 1000).toFixed(1) + '秒', 'spdLabel');
   setSlider('fontSize', cfg.fontSize, (v) => v + 'px', 'fsLabel');
   setSlider('opacity', cfg.opacity, (v) => Math.round(v * 100) + '%', 'opLabel');
+  const safeZone = cfg.safeZone || {};
+  for (const edge of ['top', 'bottom', 'left', 'right']) {
+    setSafeZoneSlider(edge, safeZone[edge] || 0);
+  }
   // 起動時に累計の概算コストを表示。
   updateCost((cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017), cfg.openaiUsageMs);
   setMainRunStatus(running);
@@ -98,6 +102,21 @@ function setSlider(id, val, fmt, labelId) {
   $(labelId).textContent = fmt(Number(val));
   $(id)._fmt = fmt;
   $(id)._label = labelId;
+}
+
+function safeZoneControlId(edge) {
+  return 'safeZone' + edge[0].toUpperCase() + edge.slice(1);
+}
+
+function safeZoneLabelId(edge) {
+  return safeZoneControlId(edge) + 'Label';
+}
+
+function setSafeZoneSlider(edge, value) {
+  const id = safeZoneControlId(edge);
+  const labelId = safeZoneLabelId(edge);
+  $(id).value = Number(value) || 0;
+  $(labelId).textContent = `${Number(value) || 0}px`;
 }
 
 function listToText(value) {
@@ -190,12 +209,20 @@ function bindControls() {
       patch({ [id]: num });
     });
   }
+  for (const edge of ['top', 'bottom', 'left', 'right']) {
+    const id = safeZoneControlId(edge);
+    $(id).addEventListener('input', () => {
+      const value = parseInt($(id).value, 10) || 0;
+      $(safeZoneLabelId(edge)).textContent = `${value}px`;
+      patch({ safeZone: { [edge]: value } });
+    });
+  }
 }
 
 let patchTimer = null;
 let pendingPatch = {};
 function patch(p) {
-  Object.assign(pendingPatch, p);
+  pendingPatch = mergeDiagnostics(pendingPatch, p);
   clearTimeout(patchTimer);
   patchTimer = setTimeout(() => { flushPatch(); }, 150);
 }
@@ -203,7 +230,7 @@ function patch(p) {
 async function flushPatch(extra = {}) {
   clearTimeout(patchTimer);
   patchTimer = null;
-  const merged = { ...pendingPatch, ...extra };
+  const merged = mergeDiagnostics(pendingPatch, extra);
   pendingPatch = {};
   if (!Object.keys(merged).length) return cfg;
   cfg = await window.ji.setConfig(merged);

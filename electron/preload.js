@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('ji', {
   emergencyStop: (reason) => ipcRenderer.invoke('emergency-stop', reason),
   testComment: (text) => ipcRenderer.invoke('test-comment', text),
   getRuntimeDiagnostics: () => ipcRenderer.invoke('get-runtime-diagnostics'),
+  runSetupDiagnostics: () => ipcRenderer.invoke('run-setup-diagnostics'),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
   exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
 

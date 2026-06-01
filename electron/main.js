@@ -397,7 +397,8 @@ function setOverlayStyle() {
     fontSize: cfg.fontSize,
     speedMs: cfg.speedMs,
     opacity: cfg.opacity,
-    maxOnScreen: cfg.maxOnScreen
+    maxOnScreen: cfg.maxOnScreen,
+    safeZone: cfg.safeZone
   });
 }
 
@@ -766,6 +767,7 @@ function configSummaryForDiagnostics() {
     whisperModel: cfg.whisperModel,
     openaiSttModel: cfg.openaiSttModel,
     openaiUsageMs: cfg.openaiUsageMs,
+    safeZone: cfg.safeZone,
     ngMode: cfg.ngMode,
     ngWordsCount: Array.isArray(cfg.ngWords) ? cfg.ngWords.length : 0,
     codex: {

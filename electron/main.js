@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage, Tray, Menu, nativeImage } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -38,6 +38,8 @@ if (!gotSingleInstanceLock) {
 
 let overlayWins = [];         // 各ディスプレイのオーバーレイ（マルチモニター対応）
 let controlWin = null;
+let tray = null;
+let isQuitting = false;
 let cfg = configStore.load();
 logger.info('app.launch', { version: app.getVersion(), packaged: app.isPackaged, platform: process.platform });
 
@@ -247,6 +249,12 @@ function createControl() {
     sendControl('running', running);
     sendControl('diagnostics', runtimeDiagnosticsSnapshot());
   });
+  controlWin.on('close', (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    controlWin.hide();
+    updateTrayMenu();
+  });
   controlWin.on('closed', () => { controlWin = null; });
 }
 
@@ -336,6 +344,47 @@ function summonControl() {
   setTimeout(() => {
     if (controlWin && !controlWin.isDestroyed()) controlWin.setAlwaysOnTop(false);
   }, 500);
+}
+
+function createTrayImage() {
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">',
+    '<rect width="32" height="32" rx="7" fill="#11131a"/>',
+    '<path d="M7 10h18v3H7zm0 6h14v3H7zm0 6h18v3H7z" fill="#5bd1ff"/>',
+    '<circle cx="25" cy="9" r="4" fill="#ffd24d"/>',
+    '</svg>'
+  ].join('');
+  const image = nativeImage.createFromDataURL('data:image/svg+xml;utf8,' + encodeURIComponent(svg));
+  image.setTemplateImage(false);
+  return image;
+}
+
+function createTray() {
+  if (tray) return;
+  tray = new Tray(createTrayImage());
+  tray.setToolTip('Ji-Danmaku');
+  tray.on('click', summonControl);
+  updateTrayMenu();
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'コントロールを表示', click: summonControl },
+    {
+      label: running ? '弾幕を停止' : '弾幕を開始',
+      click: () => { if (running) stopRunning(); else startRunning(); }
+    },
+    { label: '緊急停止', enabled: running, click: () => emergencyStop('tray') },
+    { type: 'separator' },
+    { label: '終了', click: quitFromTray }
+  ]));
+}
+
+function quitFromTray() {
+  isQuitting = true;
+  try { stopRunning({ clearOverlay: true }); } catch {}
+  app.quit();
 }
 
 // ---- 弾幕送出 ----------------------------------------------------------
@@ -735,6 +784,7 @@ function emergencyStop(reason = 'shortcut') {
 
 function broadcastRunning() {
   sendControl('running', running);
+  updateTrayMenu();
 }
 
 // ---- IPC ---------------------------------------------------------------
@@ -1093,6 +1143,7 @@ app.whenReady().then(() => {
   logger.info('app.ready');
   configureOpenAiStt();
   createOverlays();
+  createTray();
   createControl();
 
   // ディスプレイ着脱・解像度/配置変更に追従してオーバーレイを作り直す。
@@ -1126,10 +1177,20 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
 app.on('will-quit', () => {
   logger.info('app.will_quit');
   globalShortcut.unregisterAll();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   try { require('./ai/codex').shutdown(); } catch {}
   try { openaiStt.close(); } catch {}
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  if (isQuitting && process.platform !== 'darwin') app.quit();
+});

@@ -66,17 +66,21 @@ let applyingPreset = false;
 
 // 関係ない項目を隠して見やすくする。
 function show(id, on) { const el = $(id); if (el) el.classList.toggle('hidden', !on); }
+function syncAmbientControls() {
+  const filler = $('ambientEnabled').checked;
+  show('ambientField', filler);
+  $('ambientPerMinute').disabled = !filler;
+}
 function applyVisibility() {
   const mic = $('micEnabled').checked;
   const stt = $('sttEnabled').checked;
   const openai = $('sttBackend').value === 'openai';
-  const filler = $('ambientEnabled').checked;
   show('micDetails', mic);                       // マイクON時だけ音声詳細
   show('sttOptions', mic && stt);                // 文字起こしON時だけエンジン等
   show('whisperModelField', mic && stt && !openai); // ローカル時だけWhisperモデル
   show('openaiKeyField', mic && stt && openai);  // GPT Realtime Whisper時だけAPIキー
   show('sttCost', mic && stt && openai);         // GPT Realtime Whisper時だけ概算コスト
-  show('ambientField', filler);                  // フィラーON時だけ密度
+  syncAmbientControls();                         // フィラーON時だけ密度を操作可能にする
 }
 
 // ---- 初期化 ------------------------------------------------------------
@@ -126,7 +130,7 @@ function reflectConfig() {
   $('commentTone').value = isKnownSelectValue('commentTone', cfg.commentTone) ? cfg.commentTone : 'balanced';
   $('micDeviceId').value = isKnownSelectValue('micDeviceId', cfg.micDeviceId) ? cfg.micDeviceId : '';
   $('ambientEnabled').checked = cfg.ambientEnabled !== false;
-  $('ambientPerMinute').disabled = cfg.ambientEnabled === false;
+  syncAmbientControls();
   $('micEnabled').checked = !!cfg.micEnabled;
   $('sttEnabled').checked = !!cfg.sttEnabled;
   $('sttBackend').value = cfg.sttBackend || 'local';
@@ -333,7 +337,9 @@ function bindControls() {
   $('brain').addEventListener('change', () => patch({ brain: $('brain').value }));
   $('commentTone').addEventListener('change', () => patch({ commentTone: $('commentTone').value }));
   $('ambientEnabled').addEventListener('change', () => {
-    patch(presetControlledPatch({ ambientEnabled: $('ambientEnabled').checked }));
+    cfg.ambientEnabled = $('ambientEnabled').checked;
+    syncAmbientControls();
+    patch(presetControlledPatch({ ambientEnabled: cfg.ambientEnabled }));
     applyVisibility();  // フィラーOFFで密度スライダーを隠す
   });
   $('micEnabled').addEventListener('change', () => {

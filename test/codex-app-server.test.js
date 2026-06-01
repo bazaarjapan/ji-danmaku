@@ -91,13 +91,30 @@ test('AppServer schedules recycle after the turn limit', () => {
   assert.equal(server.shouldRecycle(), true);
 });
 
+test('AppServer tries the next Codex command candidate when startup fails', async () => {
+  const server = new __test.AppServer();
+  const tried = [];
+  server.start = (timeoutMs, command) => {
+    tried.push({ timeoutMs, command });
+    server.ready = command === 'bad-codex'
+      ? Promise.reject(new Error('bad candidate'))
+      : Promise.resolve();
+  };
+
+  await server.startWithFallback(1234, ['bad-codex', 'good-codex']);
+
+  assert.deepEqual(tried, [
+    { timeoutMs: 1234, command: 'bad-codex' },
+    { timeoutMs: 1234, command: 'good-codex' }
+  ]);
+});
+
 test('AppServer starts without a shell on Unix so tree cleanup can target the server', () => {
   assert.deepEqual(__test.appServerSpawnOptions('linux'), {
     detached: true,
     windowsHide: true
   });
   assert.deepEqual(__test.appServerSpawnOptions('win32'), {
-    shell: true,
     windowsHide: true
   });
 });

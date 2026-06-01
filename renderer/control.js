@@ -2,6 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-small';
+const DEFAULT_NG_WORDS = ['死ね', '殺す', 'ぶっ殺', '消えろ', 'クズ', 'カス', 'ブス', 'デブ', 'キモい', 'ウザい', '黙れ'];
 const PRESETS = {
   chat: {
     captureIntervalMs: 12000,
@@ -141,6 +142,8 @@ function reflectConfig() {
   $('privacyExclusionsEnabled').checked = privacy.enabled !== false;
   $('privacyProcessNames').value = listToText(privacy.processNames);
   $('privacyTitlePatterns').value = listToText(privacy.titlePatterns);
+  $('ngMode').value = cfg.ngMode === 'mask' ? 'mask' : 'drop';
+  renderNgWords();
   $('emergencyShortcut').textContent = cfg.emergencyStopShortcut || 'F9';
   setSlider('micThreshold', cfg.micThreshold || 0.12, (v) => Number(v).toFixed(2), 'micThresholdLabel');
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
@@ -190,6 +193,81 @@ function textToList(value) {
     .split(/[\r\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeNgWords(value) {
+  const seen = new Set();
+  const source = Array.isArray(value) ? value.join('\n') : value;
+  const out = [];
+  for (const word of textToList(source)) {
+    const key = word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(word);
+  }
+  return out;
+}
+
+function setNgWordStatus(text, level) {
+  const el = $('ngWordStatus');
+  if (!el) return;
+  el.classList.remove('ok', 'warn');
+  if (level) el.classList.add(level);
+  el.textContent = text || '';
+}
+
+function saveNgWords(words, message = '保存しました') {
+  cfg.ngWords = normalizeNgWords(words);
+  renderNgWords();
+  patch({ ngWords: cfg.ngWords });
+  setNgWordStatus(message, 'ok');
+}
+
+function renderNgWords() {
+  const list = $('ngWordList');
+  if (!list) return;
+  list.innerHTML = '';
+  const words = normalizeNgWords(cfg.ngWords || []);
+  cfg.ngWords = words;
+  if (!words.length) {
+    const empty = document.createElement('span');
+    empty.className = 'hint';
+    empty.textContent = '登録なし';
+    list.appendChild(empty);
+    return;
+  }
+  for (const word of words) {
+    const chip = document.createElement('span');
+    chip.className = 'ng-chip';
+    const label = document.createElement('span');
+    label.textContent = word;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.title = `${word} を削除`;
+    remove.setAttribute('aria-label', `${word} を削除`);
+    remove.addEventListener('click', () => saveNgWords(cfg.ngWords.filter((item) => item !== word), '削除しました'));
+    chip.appendChild(label);
+    chip.appendChild(remove);
+    list.appendChild(chip);
+  }
+}
+
+function addNgWord() {
+  const input = $('ngWordInput');
+  const additions = normalizeNgWords(input.value);
+  if (!additions.length) {
+    setNgWordStatus('追加するNGワードを入力してください', 'warn');
+    return;
+  }
+  const before = normalizeNgWords(cfg.ngWords || []);
+  const next = normalizeNgWords([...before, ...additions]);
+  input.value = '';
+  saveNgWords(next, next.length > before.length ? '追加しました' : '重複は追加しませんでした');
+}
+
+function resetNgWords() {
+  saveNgWords(cfg.defaultNgWords || DEFAULT_NG_WORDS, '既定に戻しました');
 }
 
 function markPresetCustom() {
@@ -309,6 +387,16 @@ function bindControls() {
   $('privacyTitlePatterns').addEventListener('input', () => {
     patch({ privacyExclusions: { titlePatterns: textToList($('privacyTitlePatterns').value) } });
   });
+  $('ngMode').addEventListener('change', () => {
+    cfg.ngMode = $('ngMode').value === 'mask' ? 'mask' : 'drop';
+    patch({ ngMode: cfg.ngMode });
+    setNgWordStatus('保存しました', 'ok');
+  });
+  $('addNgWord').addEventListener('click', addNgWord);
+  $('ngWordInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addNgWord();
+  });
+  $('resetNgWords').addEventListener('click', resetNgWords);
 
   for (const id of ['captureIntervalMs', 'voiceReactivity', 'ambientPerMinute', 'speedMs', 'fontSize', 'opacity']) {
     $(id).addEventListener('input', () => {

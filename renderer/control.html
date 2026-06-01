@@ -237,6 +237,24 @@
       </div>
     </section>
 
+    <section class="ng-sec">
+      <h2>NGワード</h2>
+      <label class="field">
+        処理モード
+        <select id="ngMode">
+          <option value="drop">除外する</option>
+          <option value="mask">伏字にする</option>
+        </select>
+      </label>
+      <div class="ng-add-row">
+        <input type="text" id="ngWordInput" placeholder="NGワードを追加" spellcheck="false" />
+        <button id="addNgWord" type="button">追加</button>
+      </div>
+      <div id="ngWordList" class="ng-list"></div>
+      <button id="resetNgWords" type="button" class="ghost full">既定に戻す</button>
+      <div id="ngWordStatus" class="hint"></div>
+    </section>
+
     <section class="privacy-sec">
       <h2>プライバシー・緊急停止</h2>
       <div class="row">

@@ -8,7 +8,7 @@ const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
 const openaiStt = require('./ai/openai-stt');
-const { dedupeAiComments, filterNgComments } = require('./comment-utils');
+const { dedupeAiComments, filterNgComments, normalizeNgWords } = require('./comment-utils');
 const logger = require('./logger');
 const privacyRules = require('./privacy-rules');
 
@@ -84,7 +84,7 @@ function publicConfig() {
   const out = { ...cfg };
   delete out.openaiApiKey;
   delete out.openaiApiKeyEncrypted;
-  return { ...out, ...openAiApiKeyState() };
+  return { ...out, defaultNgWords: configStore.DEFAULTS.ngWords, ...openAiApiKeyState() };
 }
 
 function configureOpenAiStt() {
@@ -852,6 +852,12 @@ ipcMain.handle('set-config', (_e, patch) => {
   if (keyChanged) {
     storeOpenAiApiKey(nextPatch.openaiApiKey);
     delete nextPatch.openaiApiKey;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPatch, 'ngWords')) {
+    nextPatch.ngWords = normalizeNgWords(nextPatch.ngWords);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPatch, 'ngMode') && !['drop', 'mask'].includes(nextPatch.ngMode)) {
+    nextPatch.ngMode = 'drop';
   }
   cfg = configStore.deepMerge(cfg, nextPatch);
   const saved = configStore.save(cfg);

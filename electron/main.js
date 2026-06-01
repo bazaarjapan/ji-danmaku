@@ -1,6 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -127,6 +128,11 @@ let runtimeDiagnostics = {
     emergencyStoppedAt: 0,
     reason: '',
     shortcut: cfg.emergencyStopShortcut || 'F9',
+    updatedAt: 0
+  },
+  setup: {
+    status: 'idle',
+    checks: [],
     updatedAt: 0
   }
 };
@@ -735,6 +741,7 @@ function broadcastRunning() {
 
 ipcMain.handle('get-config', () => publicConfig());
 ipcMain.handle('get-runtime-diagnostics', () => runtimeDiagnosticsSnapshot());
+ipcMain.handle('run-setup-diagnostics', runSetupDiagnostics);
 
 function configSummaryForDiagnostics() {
   const keyState = openAiApiKeyState();
@@ -843,6 +850,85 @@ ipcMain.handle('export-diagnostics', () => {
   logger.info('diagnostics.exported', { file });
   return { text, file };
 });
+
+function setupItem(id, label, status, message, action = '') {
+  return { id, label, status, message, action };
+}
+
+function summarizeSetupStatus(checks) {
+  if (checks.some((check) => check.status === 'error')) return 'error';
+  if (checks.some((check) => check.status === 'warn')) return 'warn';
+  return 'ok';
+}
+
+function execFileText(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { windowsHide: true, timeout: 5000, ...options }, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve(String(stdout || stderr || '').trim());
+    });
+  });
+}
+
+async function checkCodexSetup() {
+  const bin = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+  try {
+    const version = await execFileText(bin, ['--version'], { timeout: 5000 });
+    return setupItem(
+      'codex',
+      'Codex',
+      'ok',
+      version ? `利用可能: ${version}` : 'Codex CLI を起動できます',
+      cfg.brain === 'codex' ? '' : 'Codexを使う場合はAIブレインをCodexに切り替えてください'
+    );
+  } catch {
+    return setupItem(
+      'codex',
+      'Codex',
+      cfg.brain === 'codex' ? 'error' : 'warn',
+      'Codex CLI を確認できません',
+      'codex login と PATH 設定を確認してください。未設定でもmock弾幕で継続できます'
+    );
+  }
+}
+
+async function checkCaptureSetup() {
+  try {
+    const shot = await scr.captureScreenshot(captureTargetDisplay());
+    if (shot && shot.file && fs.existsSync(shot.file)) {
+      return setupItem('capture', '画面キャプチャ', 'ok', 'スクリーンショットを取得できます');
+    }
+    return setupItem('capture', '画面キャプチャ', 'error', 'スクリーンショットが空でした', '画面キャプチャ権限やディスプレイ接続を確認してください');
+  } catch (e) {
+    return setupItem('capture', '画面キャプチャ', 'error', '取得に失敗: ' + e.message, '画面キャプチャ権限やセキュリティソフトの制限を確認してください');
+  }
+}
+
+async function runSetupDiagnostics() {
+  const checks = [
+    await checkCodexSetup(),
+    await checkCaptureSetup()
+  ];
+  const status = summarizeSetupStatus(checks);
+  const updatedAt = Date.now();
+  updateRuntimeDiagnostics({
+    setup: {
+      status,
+      checks,
+      updatedAt
+    }
+  });
+  logger.info('setup_diagnostics.completed', {
+    status,
+    checks: checks.map((check) => ({ id: check.id, status: check.status }))
+  });
+  return { status, checks, updatedAt };
+}
 
 ipcMain.handle('set-config', (_e, patch) => {
   const hadMulti = cfg.multiMonitor;

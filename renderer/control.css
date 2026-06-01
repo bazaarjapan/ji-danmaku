@@ -381,6 +381,35 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
 .diagnostics-actions button.ghost { background: var(--line); color: var(--ink); }
 #diagnosticsStatus.ok { color: var(--ok); }
 #diagnosticsStatus.warn { color: var(--warn); }
+.setup-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.setup-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11131a;
+}
+.setup-item strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+.setup-item span,
+.setup-item small {
+  color: var(--sub);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.setup-item[data-status=ok] { border-color: rgba(59, 211, 142, .35); }
+.setup-item[data-status=warn] { border-color: rgba(255, 210, 77, .45); }
+.setup-item[data-status=error] { border-color: rgba(255, 91, 91, .5); }
+.setup-item[data-status=ok] strong { color: var(--ok); }
+.setup-item[data-status=warn] strong { color: var(--warn); }
+.setup-item[data-status=error] strong { color: var(--danger); }
 
 .secret-row { display: flex; gap: 6px; margin-top: 6px; }
 .secret-row input {

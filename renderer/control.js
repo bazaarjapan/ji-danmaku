@@ -323,6 +323,7 @@ function bindControls() {
   });
   $('copyDiagnostics').addEventListener('click', copyDiagnostics);
   $('exportDiagnostics').addEventListener('click', exportDiagnostics);
+  $('runSetupDiagnostics').addEventListener('click', runSetupDiagnostics);
   $('emergencyStop').addEventListener('click', emergencyStop);
 
   $('preset').addEventListener('change', () => applyPreset($('preset').value));
@@ -607,6 +608,7 @@ function renderDiagnosticsPanel() {
   const codexDiag = runtimeDiagnostics.codex || {};
   const privacyDiag = runtimeDiagnostics.privacy || {};
   const safetyDiag = runtimeDiagnostics.safety || {};
+  const setupDiag = runtimeDiagnostics.setup || {};
   const aiBrain = aiDiag.requestedBrain || (cfg && cfg.brain) || 'codex';
   const aiText = privacyDiag.excluded
     ? '除外中'
@@ -646,6 +648,7 @@ function renderDiagnosticsPanel() {
   if (aiDiag.lastError) details.push(aiDiag.lastError);
   if (codexDiag.consecutiveFails) details.push(`Codex失敗 ${codexDiag.consecutiveFails}回`);
   if (sttDiag.status === 'error' && sttDiag.message) details.push(sttDiag.message);
+  if (setupDiag.status === 'error' || setupDiag.status === 'warn') details.push('セットアップ診断に確認項目あり');
   if (safetyDiag.emergencyStoppedAt) details.push('緊急停止済み');
   $('diagDetail').textContent = details.join(' / ').slice(0, 160);
 }
@@ -765,6 +768,129 @@ function setPrivacyNotice(showNotice, text = '') {
   if (!el) return;
   el.classList.toggle('hidden', !showNotice);
   el.textContent = showNotice ? text : '';
+}
+
+function setupItem(id, label, status, message, action = '') {
+  return { id, label, status, message, action };
+}
+
+function summarizeSetupStatus(checks) {
+  if (checks.some((check) => check.status === 'error')) return 'error';
+  if (checks.some((check) => check.status === 'warn')) return 'warn';
+  return 'ok';
+}
+
+function statusLabel(status) {
+  if (status === 'ok') return 'OK';
+  if (status === 'warn') return '警告';
+  if (status === 'error') return '失敗';
+  return '確認中';
+}
+
+function renderSetupDiagnostics(result) {
+  const list = $('setupDiagnosticsList');
+  if (!list) return;
+  list.innerHTML = '';
+  const checks = result && Array.isArray(result.checks) ? result.checks : [];
+  for (const check of checks) {
+    const item = document.createElement('div');
+    item.className = 'setup-item';
+    item.dataset.status = check.status || 'idle';
+    const title = document.createElement('strong');
+    title.textContent = `${statusLabel(check.status)} · ${check.label}`;
+    const message = document.createElement('span');
+    message.textContent = check.message || '';
+    item.appendChild(title);
+    item.appendChild(message);
+    if (check.action) {
+      const action = document.createElement('small');
+      action.textContent = check.action;
+      item.appendChild(action);
+    }
+    list.appendChild(item);
+  }
+}
+
+function micSetupErrorMessage(error) {
+  if (!error) return 'マイク取得に失敗しました';
+  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+    return 'マイク権限が拒否されています';
+  }
+  if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
+    return '選択したマイクが見つかりません';
+  }
+  if (error.name === 'NotReadableError') {
+    return 'マイクを開けません';
+  }
+  return error.message || 'マイク取得に失敗しました';
+}
+
+async function checkMicSetup() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return setupItem('mic', 'マイク', 'error', 'この環境ではマイクAPIを利用できません');
+  }
+  if (micStream) {
+    const track = micStream.getAudioTracks()[0];
+    return setupItem('mic', 'マイク', 'ok', `監視中: ${(track && track.label) || selectedMicLabel()}`);
+  }
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(audioConstraints());
+    const track = stream.getAudioTracks()[0];
+    return setupItem('mic', 'マイク', 'ok', `取得できます: ${(track && track.label) || selectedMicLabel()}`);
+  } catch (e) {
+    return setupItem('mic', 'マイク', e.name === 'NotAllowedError' ? 'error' : 'warn', micSetupErrorMessage(e), '入力デバイス、Windowsのマイク権限、他アプリの使用状況を確認してください');
+  } finally {
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    refreshMicDevices();
+  }
+}
+
+function checkWhisperSetup() {
+  if (!cfg.sttEnabled) {
+    return setupItem('whisper', 'Whisper/STT', 'warn', '文字起こしはOFFです', '声の内容に反応させる場合は文字起こしをONにしてください');
+  }
+  if (cfg.sttBackend === 'openai') {
+    if (cfg.openaiApiKeyConfigured) {
+      return setupItem('whisper', 'Whisper/STT', 'ok', 'GPT Realtime WhisperのAPIキーが設定されています');
+    }
+    return setupItem('whisper', 'Whisper/STT', 'error', 'GPT Realtime WhisperのAPIキーが未設定です', 'ローカルWhisperへ戻すか、OpenAI APIキーを保存してください');
+  }
+  if (!isWhisperModel(cfg.whisperModel)) {
+    return setupItem('whisper', 'Whisper/STT', 'error', 'Whisperモデル設定が不正です', 'Whisperモデルを選び直してください');
+  }
+  if (sttReady) {
+    return setupItem('whisper', 'Whisper/STT', 'ok', `ローカルWhisper準備OK: ${cfg.whisperModel}`);
+  }
+  return setupItem('whisper', 'Whisper/STT', 'warn', `ローカルWhisper未読込: ${cfg.whisperModel}`, '初回スタート時にモデルを読み込みます。時間がかかる場合があります');
+}
+
+async function runSetupDiagnostics() {
+  const button = $('runSetupDiagnostics');
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '確認中';
+  setDiagnosticsStatus('セットアップ診断中...', 'warn');
+  renderSetupDiagnostics({ checks: [setupItem('running', '診断', 'warn', '確認中')] });
+  try {
+    const mainResult = await window.ji.runSetupDiagnostics();
+    const checks = [
+      ...((mainResult && mainResult.checks) || []),
+      await checkMicSetup(),
+      checkWhisperSetup()
+    ];
+    const status = summarizeSetupStatus(checks);
+    const result = { status, checks, updatedAt: Date.now() };
+    renderSetupDiagnostics(result);
+    updateDiagnosticsPanel({ setup: result });
+    setDiagnosticsStatus(status === 'ok' ? 'セットアップ診断OK' : 'セットアップ診断に確認項目があります', status === 'error' ? 'warn' : (status === 'warn' ? 'warn' : 'ok'));
+  } catch (e) {
+    renderSetupDiagnostics({ checks: [setupItem('diagnostics', '診断', 'error', e.message || '診断に失敗しました')] });
+    setDiagnosticsStatus(e.message || 'セットアップ診断に失敗しました', 'warn');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 async function copyDiagnostics() {

@@ -99,3 +99,8 @@ test('default STT silence favors faster speech reactions', () => {
   assert.equal(DEFAULTS.sttSilenceMs, 900);
   assert.equal(defaultConfig().sttSilenceMs, 900);
 });
+
+test('default ambient filler starts disabled', () => {
+  assert.equal(DEFAULTS.ambientEnabled, false);
+  assert.equal(defaultConfig().ambientEnabled, false);
+});

@@ -39,7 +39,7 @@ const DEFAULTS = {
 
   // フィラー弾幕(アンビエント/発話ざわめき)を追加するか。
   // false にすると AI が生成した弾幕だけを流す（www/草/888 等の自動フィラーは出さない）。
-  ambientEnabled: true,
+  ambientEnabled: false,
   // アンビエント(自動)弾幕: AI が無くても常に賑わいを出す。0で無効。
   // 1分あたりのおおよその自動コメント数。
   ambientPerMinute: 40,

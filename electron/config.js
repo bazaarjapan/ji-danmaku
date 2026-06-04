@@ -12,7 +12,7 @@ const CONFIG_DIR = path.join(
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
 const DEFAULTS = {
-  // AI ブレイン: 'codex' | 'anthropic' | 'mock'
+  // AI ブレイン: 'codex' | 'mock'
   // 利用可能なものへ自動フォールバックする（main.js 側で解決）。
   brain: 'codex',
   // UIプリセット。'custom' は手動調整状態。
@@ -93,19 +93,8 @@ const DEFAULTS = {
   // 初回のみモデルをDL(baseで約150MB)→以降はキャッシュからオフライン動作。
   sttEnabled: true,
 
-  // 音声認識バックエンド: 'local'(既定/ローカルWhisper・無料) | 'openai'(GPT Realtime Whisper・従量課金)。
-  // 'openai' は発話の区切りごとに Realtime API(WebSocket)へ音声を送って文字起こしさせるので
-  // 「声に反応する間だけ課金」。APIキーはコントロール画面または開発用 .env.local で設定する。
+  // 音声認識バックエンド: 'local'(ローカルWhisper・無料)。
   sttBackend: 'local',
-  // OpenAI Realtime 文字起こしモデル。gpt-realtime-whisper。
-  openaiSttModel: 'gpt-realtime-whisper',
-  // UIから保存したOpenAI APIキー。Electron safeStorageで暗号化したbase64文字列。
-  // 実キーはIPCレスポンスには返さない。
-  openaiApiKeyEncrypted: '',
-  // OpenAI音声認識の概算単価($/分)。送った音声長×この値で従量課金を概算表示。
-  openaiSttUsdPerMin: 0.017,
-  // OpenAIへ送った音声の累計(ms)。概算コスト表示用に積算・保存される。
-  openaiUsageMs: 0,
   // Whisperモデル: tiny=最速/粗い, base=軽い, small=精度と速度のバランス(推奨),
   // medium=高精度だが重い(WebGPU推奨)。日本語は base だと弱いので既定は small。
   whisperModel: 'Xenova/whisper-small',
@@ -137,12 +126,6 @@ const DEFAULTS = {
     maxFailures: 3,       // 生成がこの回数連続で失敗したらバックオフに入る。
     backoffMs: 30000      // バックオフ時間。この間はcodex生成をスキップしmockで継続。
   },
-
-  // Anthropic (任意): 環境変数 ANTHROPIC_API_KEY が使われる
-  anthropic: {
-    model: 'claude-opus-4-8',
-    maxTokens: 400
-  }
 };
 
 const SECRET_CONFIG_KEYS = new Set([
@@ -201,21 +184,34 @@ function sanitizeByDefaults(value, defaults) {
 }
 
 function sanitizeImportedConfig(value) {
-  return sanitizeByDefaults(value, DEFAULTS) || {};
+  return normalizeConfig(sanitizeByDefaults(value, DEFAULTS) || {});
 }
 
 function exportableConfig(value) {
-  return sanitizeByDefaults(value, DEFAULTS) || {};
+  return normalizeConfig(sanitizeByDefaults(value, DEFAULTS) || {});
 }
 
 function defaultConfig() {
   return cloneJson(DEFAULTS);
 }
 
+function normalizeConfig(cfg) {
+  const out = { ...(cfg || {}) };
+  if (!['codex', 'mock'].includes(out.brain)) out.brain = DEFAULTS.brain;
+  if (out.sttBackend !== 'local') out.sttBackend = DEFAULTS.sttBackend;
+  delete out.openaiApiKey;
+  delete out.openaiApiKeyEncrypted;
+  delete out.openaiSttModel;
+  delete out.openaiSttUsdPerMin;
+  delete out.openaiUsageMs;
+  delete out.anthropic;
+  return out;
+}
+
 function load() {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-    return deepMerge(DEFAULTS, JSON.parse(raw));
+    return normalizeConfig(deepMerge(DEFAULTS, JSON.parse(raw)));
   } catch {
     return { ...DEFAULTS };
   }

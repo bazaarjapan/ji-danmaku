@@ -74,12 +74,9 @@ function syncAmbientControls() {
 function applyVisibility() {
   const mic = $('micEnabled').checked;
   const stt = $('sttEnabled').checked;
-  const openai = $('sttBackend').value === 'openai';
   show('micDetails', mic);                       // マイクON時だけ音声詳細
   show('sttOptions', mic && stt);                // 文字起こしON時だけエンジン等
-  show('whisperModelField', mic && stt && !openai); // ローカル時だけWhisperモデル
-  show('openaiKeyField', mic && stt && openai);  // GPT Realtime Whisper時だけAPIキー
-  show('sttCost', mic && stt && openai);         // GPT Realtime Whisper時だけ概算コスト
+  show('whisperModelField', mic && stt);
   syncAmbientControls();                         // フィラーON時だけ密度を操作可能にする
 }
 
@@ -93,7 +90,6 @@ async function init() {
   applyVisibility();
   setSettingsOpen(false);
   window.ji.onRunning((r) => setRunning(r));
-  window.ji.onSttResult(handleSttResult);
   window.ji.onEmergencyStop(handleEmergencyStop);
   window.ji.onStatus((s) => {
     if (s.brain) $('brainBadge').textContent = 'brain: ' + s.brain;
@@ -126,22 +122,30 @@ async function init() {
 
 function reflectConfig() {
   $('preset').value = PRESETS[cfg.preset] ? cfg.preset : 'custom';
-  $('brain').value = cfg.brain;
+  const brain = isKnownSelectValue('brain', cfg.brain) ? cfg.brain : 'codex';
+  $('brain').value = brain;
+  if (cfg.brain !== brain) {
+    cfg.brain = brain;
+    patch({ brain });
+  }
   $('commentTone').value = isKnownSelectValue('commentTone', cfg.commentTone) ? cfg.commentTone : 'balanced';
   $('micDeviceId').value = isKnownSelectValue('micDeviceId', cfg.micDeviceId) ? cfg.micDeviceId : '';
   $('ambientEnabled').checked = cfg.ambientEnabled !== false;
   syncAmbientControls();
   $('micEnabled').checked = !!cfg.micEnabled;
   $('sttEnabled').checked = !!cfg.sttEnabled;
-  $('sttBackend').value = cfg.sttBackend || 'local';
+  const sttBackend = isKnownSelectValue('sttBackend', cfg.sttBackend) ? cfg.sttBackend : 'local';
+  $('sttBackend').value = sttBackend;
+  if (cfg.sttBackend !== sttBackend) {
+    cfg.sttBackend = sttBackend;
+    patch({ sttBackend });
+  }
   const whisperModel = isWhisperModel(cfg.whisperModel) ? cfg.whisperModel : DEFAULT_WHISPER_MODEL;
   $('whisperModel').value = whisperModel;
   if (cfg.whisperModel !== whisperModel) {
     cfg.whisperModel = whisperModel;
     patch({ whisperModel });
   }
-  $('openaiApiKey').value = '';
-  updateOpenAiKeyStatus();
   const privacy = cfg.privacyExclusions || {};
   $('privacyExclusionsEnabled').checked = privacy.enabled !== false;
   $('privacyProcessNames').value = listToText(privacy.processNames);
@@ -160,8 +164,6 @@ function reflectConfig() {
   for (const edge of ['top', 'bottom', 'left', 'right']) {
     setSafeZoneSlider(edge, safeZone[edge] || 0);
   }
-  // 起動時に累計の概算コストを表示。
-  updateCost((cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017), cfg.openaiUsageMs);
   setMainRunStatus(running);
   setStoppedInputStatus();
 }
@@ -377,16 +379,10 @@ function bindControls() {
   $('sttBackend').addEventListener('change', () => {
     cfg.sttBackend = $('sttBackend').value;
     patch({ sttBackend: cfg.sttBackend });
-    applyVisibility();  // GPT Realtime Whisper選択でWhisperモデルを隠す
-    updateOpenAiKeyStatus();
+    applyVisibility();
     // バックエンドで取り込みレートが変わるため、マイクごと再起動して反映。
     if (micStream) { stopMic(); if (running && cfg.micEnabled) startMic(); }
     else setStoppedInputStatus();
-  });
-  $('saveOpenaiApiKey').addEventListener('click', saveOpenAiKey);
-  $('clearOpenaiApiKey').addEventListener('click', clearOpenAiKey);
-  $('openaiApiKey').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveOpenAiKey();
   });
   $('privacyExclusionsEnabled').addEventListener('change', () => {
     patch({ privacyExclusions: { enabled: $('privacyExclusionsEnabled').checked } });
@@ -648,9 +644,8 @@ function renderDiagnosticsPanel() {
   }
   setDiagSignal('diagCodexRow', 'diagCodexText', codexText, codexState);
 
-  const sttBackend = sttDiag.backend === 'openai' ? 'GPT' : 'Local';
   const sttMessage = sttDiag.message || (cfg && cfg.sttEnabled ? '停止' : 'OFF');
-  setDiagSignal('diagSttRow', 'diagSttText', `${sttBackend}: ${sttMessage}`, stateFromRuntime(sttDiag.status));
+  setDiagSignal('diagSttRow', 'diagSttText', `Local: ${sttMessage}`, stateFromRuntime(sttDiag.status));
 
   const details = [];
   if (privacyDiag.excluded && privacyDiag.message) details.push(privacyDiag.message);
@@ -696,64 +691,12 @@ function setStoppedInputStatus() {
   );
   setSttStatus(cfg && cfg.sttEnabled ? '停止' : 'OFF', cfg && cfg.sttEnabled ? 'idle' : 'muted');
   setWhisperStatus(
-    cfg && cfg.sttBackend === 'openai' ? 'GPT Realtime' : '未起動',
+    '未起動',
     cfg && cfg.sttEnabled ? 'スタートすると文字起こしを準備します' : '文字起こしはOFFです',
     cfg && cfg.sttEnabled ? 'idle' : 'muted',
     0
   );
   setSttInfo('');
-}
-
-function updateOpenAiKeyStatus(message, level) {
-  const el = $('openaiKeyStatus');
-  if (!el) return;
-  el.classList.remove('ok', 'warn');
-  if (level) el.classList.add(level);
-  if (message) {
-    el.textContent = message;
-    return;
-  }
-  if (cfg.openaiApiKeySource === 'env') {
-    el.classList.add('ok');
-    el.textContent = '環境変数 OPENAI_API_KEY を使用中';
-  } else if (cfg.openaiApiKeyConfigured) {
-    el.classList.add('ok');
-    el.textContent = '保存済みAPIキーを使用中';
-  } else if (!cfg.openaiApiKeyStorageAvailable) {
-    el.classList.add('warn');
-    el.textContent = 'この環境ではAPIキーを安全に保存できません';
-  } else {
-    el.classList.add('warn');
-    el.textContent = 'GPT Realtime Whisperを使う場合はAPIキーを保存してください';
-  }
-}
-
-async function saveOpenAiKey() {
-  const input = $('openaiApiKey');
-  const key = input.value.trim();
-  if (!key) {
-    updateOpenAiKeyStatus('APIキーを入力してください', 'warn');
-    return;
-  }
-  try {
-    cfg = await flushPatch({ openaiApiKey: key });
-    input.value = '';
-    updateOpenAiKeyStatus('APIキーを保存しました', 'ok');
-    if (isOpenAiStt()) restartStt();
-  } catch (e) {
-    updateOpenAiKeyStatus(e.message || 'APIキーの保存に失敗しました', 'warn');
-  }
-}
-
-async function clearOpenAiKey() {
-  try {
-    cfg = await flushPatch({ openaiApiKey: '' });
-    $('openaiApiKey').value = '';
-    updateOpenAiKeyStatus();
-    if (isOpenAiStt()) restartStt();
-  } catch (e) {
-    updateOpenAiKeyStatus(e.message || 'APIキーの削除に失敗しました', 'warn');
-  }
 }
 
 function setDiagnosticsStatus(text, level) {
@@ -866,12 +809,6 @@ async function checkMicSetup() {
 function checkWhisperSetup() {
   if (!cfg.sttEnabled) {
     return setupItem('whisper', 'Whisper/STT', 'warn', '文字起こしはOFFです', '声の内容に反応させる場合は文字起こしをONにしてください');
-  }
-  if (cfg.sttBackend === 'openai') {
-    if (cfg.openaiApiKeyConfigured) {
-      return setupItem('whisper', 'Whisper/STT', 'ok', 'GPT Realtime WhisperのAPIキーが設定されています');
-    }
-    return setupItem('whisper', 'Whisper/STT', 'error', 'GPT Realtime WhisperのAPIキーが未設定です', 'ローカルWhisperへ戻すか、OpenAI APIキーを保存してください');
   }
   if (!isWhisperModel(cfg.whisperModel)) {
     return setupItem('whisper', 'Whisper/STT', 'error', 'Whisperモデル設定が不正です', 'Whisperモデルを選び直してください');
@@ -1024,11 +961,10 @@ let micStartToken = 0;
 let currentMicLevel = 0, micNoiseFrames = 0, calibrationActive = false;
 let lastTranscript = '', speaking = false, speakDecay = 0;
 
-// 取り込みサンプルレート: ローカルWhisperは16kHz、GPT Realtime Whisperは24kHz。
+// 取り込みサンプルレート: ローカルWhisperは16kHz。
 let sttSR = 16000;
 const STT_CHUNK = 4096;                  // ScriptProcessor のブロックサイズ
 const STT_PREROLL_CHUNKS = 2;            // 発話の頭欠けを防ぐため直前(約0.5s)を含める
-function isOpenAiStt() { return cfg.sttBackend === 'openai'; }
 // 区切り(会話の間)・最小長・最大長は実サンプルレートと設定から算出。
 function sttChunkMs() { return (STT_CHUNK / sttSR) * 1000; }
 function sttSilenceChunks() { return Math.max(2, Math.round((cfg.sttSilenceMs ?? 1200) / sttChunkMs())); }
@@ -1077,8 +1013,7 @@ async function startMic() {
     stream.getTracks().forEach((t) => t.stop());
     return;
   }
-  // バックエンドに合わせた取り込みレート（ローカル16k / GPT Realtime Whisper 24k）。
-  sttSR = isOpenAiStt() ? 24000 : 16000;
+  sttSR = 16000;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sttSR });
   const src = audioCtx.createMediaStreamSource(micStream);
   analyser = audioCtx.createAnalyser();
@@ -1219,28 +1154,11 @@ function startStt() {
   utterChunks = []; utterLen = 0; silentChunks = 0; preRoll = [];
   setSttStatus('準備中', 'loading');
   setWhisperStatus(
-    isOpenAiStt() ? 'GPT Realtime' : '読込中',
-    isOpenAiStt() ? 'GPT Realtime Whisperを準備中' : 'Whisperモデルを読込中です',
+    '読込中',
+    'Whisperモデルを読込中です',
     'loading',
     12
   );
-
-  // GPT Realtime Whisperバックエンド: workerを使わず、発話ごとに main 経由で Realtime文字起こしへ。
-  if (isOpenAiStt()) {
-    if (!cfg.openaiApiKeyConfigured) {
-      sttReady = false; sttActive = false;
-      const message = 'GPT Realtime Whisper用のOpenAI APIキーを保存してください';
-      setSttInfo(message);
-      setSttStatus('キー未設定', 'error');
-      setWhisperStatus('要APIキー', message, 'error', 0);
-      return;
-    }
-    sttReady = true;
-    setSttInfo('☁ GPT Realtime Whisperで文字起こし');
-    setSttStatus('待機中', 'ready');
-    setWhisperStatus('GPT Realtime', '発話を検出するとクラウドで文字起こしします', 'ready', 100);
-    return;
-  }
 
   // ローカルWhisper: Web Worker
   try {
@@ -1297,39 +1215,11 @@ function startStt() {
 
 function stopStt() {
   if (sttWorker) { try { sttWorker.terminate(); } catch {} sttWorker = null; }
-  if (isOpenAiStt()) { try { window.ji.sttStop(); } catch {} }
   sttReady = false; sttBusy = false; sttActive = false;
   utterChunks = []; utterLen = 0; silentChunks = 0;
   preRoll = [];
   lastTranscript = '';
   setStoppedInputStatus();
-}
-
-// main からの OpenAI 文字起こし結果。
-function handleSttResult(r) {
-  sttBusy = false;
-  if (!r) return;
-  if (r.error) {
-    const message = 'GPT Realtime Whisperエラー: ' + r.error;
-    setSttInfo(message);
-    setSttStatus('エラー', 'error');
-    setWhisperStatus('エラー', message, 'error', 0);
-    return;
-  }
-  if (typeof r.usageUsd === 'number') updateCost(r.usageUsd, r.usageMs);
-  if (r.text) {
-    lastTranscript = r.text.slice(-120);
-    pushRecognized(r.text);
-    setSttStatus('待機中', 'ready');
-    setWhisperStatus('GPT Realtime', '発話を検出するとクラウドで文字起こしします', 'ready', 100);
-  }
-}
-
-// OpenAI従量課金の概算表示（累計）。
-function updateCost(usd, ms) {
-  const sec = Math.round((ms || 0) / 1000);
-  const mm = Math.floor(sec / 60), ss = sec % 60;
-  $('sttCost').textContent = `☁ OpenAI概算: $${(usd || 0).toFixed(4)}（累計 ${mm}分${ss}秒）`;
 }
 
 function updateMainTranscript(text) {
@@ -1402,10 +1292,7 @@ function flushUtterance() {
   for (const c of chunks) { audio.set(c, off); off += c.length; }
   sttBusy = true;
   setSttStatus('解析中', 'loading');
-  if (isOpenAiStt()) {
-    // main 経由で OpenAI Realtime へ（結果は onSttResult で受信）。
-    window.ji.sttTranscribe(audio);
-  } else if (sttWorker) {
+  if (sttWorker) {
     sttWorker.postMessage({ type: 'transcribe', model: cfg.whisperModel, audio }, [audio.buffer]);
   } else {
     sttBusy = false;

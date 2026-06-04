@@ -54,7 +54,7 @@ Write-Output $o
 }
 
 // プライマリ画面のスクリーンショットを撮り PNG 保存して { file, signature } を返す。
-// file: 弾幕ブレイン（Codex/Claude のビジョン）への入力に使う PNG パス。
+// file: 弾幕ブレイン（Codex のビジョン）への入力に使う PNG パス。
 // signature: 32x18 の極小ビットマップ(Buffer)。前サイクルとの差分で「画面が変化したか」を判定し、
 //            無変化ならAI生成をスキップしてコスト(サブスク利用量)を抑えるために使う。
 async function captureScreenshot(targetDisplay) {

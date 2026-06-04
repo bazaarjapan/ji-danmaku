@@ -34,16 +34,14 @@ test('redact keeps safe diagnostic key status fields visible', () => {
   const result = redact({
     openAiKeyStatus: {
       configured: true,
-      source: 'saved',
-      secureStorageAvailable: true
+      source: 'env'
     }
   });
 
   assert.deepEqual(result, {
     openAiKeyStatus: {
       configured: true,
-      source: 'saved',
-      secureStorageAvailable: true
+      source: 'env'
     }
   });
 });

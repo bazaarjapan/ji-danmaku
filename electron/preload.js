@@ -23,11 +23,6 @@ contextBridge.exposeInMainWorld('ji', {
   sendMic: (state) => ipcRenderer.send('mic', state),
   sendContext: (c) => ipcRenderer.send('context-cache', c),
 
-  // クラウド音声認識(OpenAI)用: 発話音声を main へ送り、文字起こし結果を受け取る
-  sttTranscribe: (audio) => ipcRenderer.send('stt-utterance', audio),
-  sttStop: () => ipcRenderer.send('stt-stop'),
-  onSttResult: (cb) => ipcRenderer.on('stt-result', (_e, r) => cb(r)),
-
   // 受信
   onDanmaku: (cb) => ipcRenderer.on('danmaku', (_e, d) => cb(d)),
   onClearDanmaku: (cb) => ipcRenderer.on('clear-danmaku', () => cb()),

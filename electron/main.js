@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, safeStorage, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, dialog } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -8,14 +8,12 @@ const fs = require('fs');
 const configStore = require('./config');
 const scr = require('./screen');
 const ai = require('./ai');
-const openaiStt = require('./ai/openai-stt');
 const { dedupeAiComments, filterNgComments, normalizeNgWords } = require('./comment-utils');
 const logger = require('./logger');
 const privacyRules = require('./privacy-rules');
 const { codexCommandCandidates, codexCommandTarget } = require('./codex-command');
 
 // 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
-// 配布版ではコントロール画面からAPIキーを保存する。値はログに出さない。
 function loadEnvLocal() {
   if (app.isPackaged) return;
   try {
@@ -44,57 +42,12 @@ let isQuitting = false;
 let cfg = configStore.load();
 logger.info('app.launch', { version: app.getVersion(), packaged: app.isPackaged, platform: process.platform });
 
-function canEncryptSecrets() {
-  try { return safeStorage.isEncryptionAvailable(); } catch { return false; }
-}
-
-function decryptOpenAiApiKey() {
-  if (!cfg.openaiApiKeyEncrypted || !canEncryptSecrets()) return '';
-  try {
-    return safeStorage.decryptString(Buffer.from(cfg.openaiApiKeyEncrypted, 'base64'));
-  } catch {
-    return '';
-  }
-}
-
-function storeOpenAiApiKey(value) {
-  const key = String(value || '').trim();
-  delete cfg.openaiApiKey; // 古い平文設定が残っていても保存時に落とす。
-  if (!key) {
-    cfg.openaiApiKeyEncrypted = '';
-    return;
-  }
-  if (!canEncryptSecrets()) {
-    throw new Error('この環境ではAPIキーを安全に保存できません');
-  }
-  cfg.openaiApiKeyEncrypted = safeStorage.encryptString(key).toString('base64');
-}
-
-function resolveOpenAiApiKey() {
-  return process.env.OPENAI_API_KEY || decryptOpenAiApiKey();
-}
-
-function openAiApiKeyState() {
-  const envConfigured = !!process.env.OPENAI_API_KEY;
-  const savedConfigured = !!decryptOpenAiApiKey();
-  return {
-    openaiApiKeyConfigured: envConfigured || savedConfigured,
-    openaiApiKeySource: envConfigured ? 'env' : (savedConfigured ? 'saved' : ''),
-    openaiApiKeyStorageAvailable: canEncryptSecrets()
-  };
-}
-
 function publicConfig() {
   const out = { ...cfg };
   delete out.openaiApiKey;
   delete out.openaiApiKeyEncrypted;
-  return { ...out, defaultNgWords: configStore.DEFAULTS.ngWords, ...openAiApiKeyState() };
+  return { ...out, defaultNgWords: configStore.DEFAULTS.ngWords };
 }
-
-function configureOpenAiStt() {
-  openaiStt.configure(resolveOpenAiApiKey(), cfg.openaiSttModel);
-}
-configureOpenAiStt();
 
 let running = false;          // 弾幕配信ON/OFF
 let captureTimer = null;      // AI生成ループ
@@ -859,7 +812,6 @@ ipcMain.handle('import-config', importConfigFromFile);
 ipcMain.handle('reset-config', resetConfigToDefaults);
 
 function configSummaryForDiagnostics() {
-  const keyState = openAiApiKeyState();
   return logger.redact({
     brain: cfg.brain,
     preset: cfg.preset,
@@ -891,8 +843,6 @@ function configSummaryForDiagnostics() {
     sttEnabled: cfg.sttEnabled,
     sttBackend: cfg.sttBackend,
     whisperModel: cfg.whisperModel,
-    openaiSttModel: cfg.openaiSttModel,
-    openaiUsageMs: cfg.openaiUsageMs,
     safeZone: cfg.safeZone,
     ngMode: cfg.ngMode,
     ngWordsCount: Array.isArray(cfg.ngWords) ? cfg.ngWords.length : 0,
@@ -902,11 +852,6 @@ function configSummaryForDiagnostics() {
       minIntervalMs: cfg.codex && cfg.codex.minIntervalMs,
       maxFailures: cfg.codex && cfg.codex.maxFailures,
       backoffMs: cfg.codex && cfg.codex.backoffMs
-    },
-    openAiKeyStatus: {
-      configured: keyState.openaiApiKeyConfigured,
-      source: keyState.openaiApiKeySource,
-      secureStorageAvailable: keyState.openaiApiKeyStorageAvailable
     }
   });
 }
@@ -1080,11 +1025,18 @@ function normalizeConfigPatch(patch) {
   const nextPatch = { ...(patch || {}) };
   const keyChanged = Object.prototype.hasOwnProperty.call(nextPatch, 'openaiApiKey');
   const modelChanged = Object.prototype.hasOwnProperty.call(nextPatch, 'openaiSttModel');
-  if (keyChanged) {
-    storeOpenAiApiKey(nextPatch.openaiApiKey);
-    delete nextPatch.openaiApiKey;
-  }
+  delete nextPatch.openaiApiKey;
   delete nextPatch.openaiApiKeyEncrypted;
+  delete nextPatch.openaiSttModel;
+  delete nextPatch.openaiSttUsdPerMin;
+  delete nextPatch.openaiUsageMs;
+  delete nextPatch.anthropic;
+  if (Object.prototype.hasOwnProperty.call(nextPatch, 'brain') && !['codex', 'mock'].includes(nextPatch.brain)) {
+    nextPatch.brain = 'codex';
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPatch, 'sttBackend') && nextPatch.sttBackend !== 'local') {
+    nextPatch.sttBackend = 'local';
+  }
   if (Object.prototype.hasOwnProperty.call(nextPatch, 'ngWords')) {
     nextPatch.ngWords = normalizeNgWords(nextPatch.ngWords);
   }
@@ -1095,8 +1047,6 @@ function normalizeConfigPatch(patch) {
 }
 
 function afterConfigChanged(nextPatch, hadMulti, keyChanged, modelChanged) {
-  configureOpenAiStt();
-  if (cfg.sttBackend !== 'openai' || keyChanged || modelChanged) openaiStt.close();
   updateRuntimeDiagnostics({
     ai: {
       requestedBrain: cfg.brain || 'codex'
@@ -1204,7 +1154,7 @@ async function resetConfigToDefaults() {
     defaultId: 1,
     title: '設定をリセット',
     message: '設定を既定値に戻します',
-    detail: '保存済みのOpenAI APIキーも削除されます。'
+    detail: '表示、音声、プライバシーなどの設定を既定値に戻します。'
   });
   if (result.response !== 0) return { canceled: true };
   const next = replaceConfig(configStore.defaultConfig());
@@ -1256,64 +1206,6 @@ ipcMain.on('mic', (_e, state) => {
 
 ipcMain.on('context-cache', (_e, c) => { if (c) _lastContext = c; });
 
-// 'openai' バックエンド時: レンダラーの発話音声(Float32 24kHz)を Realtime で文字起こしして返す。
-ipcMain.on('stt-utterance', async (e, audio) => {
-  if (cfg.sttBackend !== 'openai') return;
-  configureOpenAiStt();
-  if (!openaiStt.isConfigured()) {
-    logger.warn('stt.openai_key_missing');
-    updateRuntimeDiagnostics({
-      stt: {
-        status: 'error',
-        backend: 'openai',
-        message: 'OpenAI APIキー未設定'
-      }
-    });
-    if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text: '', error: 'OpenAI APIキー未設定（コントロール画面で入力）' });
-    return;
-  }
-  // 送った音声長(24kHz)を課金対象として積算・保存し、概算コストを算出。
-  const ms = audio && audio.length ? Math.round((audio.length / 24000) * 1000) : 0;
-  cfg.openaiUsageMs = (cfg.openaiUsageMs || 0) + ms;
-  try {
-    if (!configStore.save(cfg)) logger.error('config.save_failed', { source: 'openaiUsageMs' });
-  } catch (err) {
-    logger.error('config.save_failed', { source: 'openaiUsageMs', message: err.message });
-  }
-  const usageUsd = (cfg.openaiUsageMs / 60000) * (cfg.openaiSttUsdPerMin || 0.017);
-  let text = '';
-  let error = '';
-  updateRuntimeDiagnostics({
-    stt: {
-      status: 'loading',
-      backend: 'openai',
-      message: 'GPT Realtime Whisperで解析中'
-    }
-  });
-  try { text = await openaiStt.transcribe(audio); } catch (err) {
-    error = err.message;
-    logger.warn('stt.openai_transcribe_failed', { message: err.message });
-  }
-  updateRuntimeDiagnostics({
-    stt: {
-      status: error ? 'error' : 'ready',
-      backend: 'openai',
-      message: error ? `GPT Realtime Whisperエラー: ${error}` : (text ? `認識: ${text.slice(0, 40)}` : '認識結果なし')
-    }
-  });
-  if (!e.sender.isDestroyed()) e.sender.send('stt-result', { text, error, usageUsd, usageMs: cfg.openaiUsageMs });
-});
-ipcMain.on('stt-stop', () => {
-  openaiStt.close();
-  updateRuntimeDiagnostics({
-    stt: {
-      status: cfg.sttEnabled ? 'idle' : 'muted',
-      backend: cfg.sttBackend || 'local',
-      message: cfg.sttEnabled ? '停止' : 'OFF'
-    }
-  });
-});
-
 // ---- アプリライフサイクル ----------------------------------------------
 
 function summonExistingInstance() {
@@ -1329,7 +1221,6 @@ app.on('second-instance', summonExistingInstance);
 
 app.whenReady().then(() => {
   logger.info('app.ready');
-  configureOpenAiStt();
   createOverlays();
   createTray();
   createControl();
@@ -1377,7 +1268,6 @@ app.on('will-quit', () => {
     tray = null;
   }
   try { require('./ai/codex').shutdown(); } catch {}
-  try { openaiStt.close(); } catch {}
 });
 app.on('window-all-closed', () => {
   if (isQuitting && process.platform !== 'darwin') app.quit();

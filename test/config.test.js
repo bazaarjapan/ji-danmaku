@@ -57,18 +57,28 @@ test('exportableConfig removes secret and helper fields', () => {
   assert.equal(result.brain, DEFAULTS.brain);
 });
 
+test('defaultConfig does not include stored API key fields', () => {
+  const result = defaultConfig();
+
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'openaiApiKey'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'openaiApiKeyEncrypted'), false);
+});
+
 test('sanitizeImportedConfig keeps known typed keys and drops unknown or invalid values', () => {
   const result = sanitizeImportedConfig({
-    brain: 'mock',
+    brain: 'anthropic',
+    sttBackend: 'openai',
     captureIntervalMs: 'fast',
     ngWords: [' foo ', '', 'bar'],
     safeZone: { top: 120, unknown: 9 },
     openaiApiKeyEncrypted: 'encrypted',
+    anthropic: { model: 'claude' },
     unknownKey: true
   });
 
   assert.deepEqual(result, {
-    brain: 'mock',
+    brain: DEFAULTS.brain,
+    sttBackend: 'local',
     ngWords: ['foo', 'bar'],
     safeZone: { top: 120 }
   });

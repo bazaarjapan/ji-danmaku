@@ -100,6 +100,11 @@ test('default STT silence favors faster speech reactions', () => {
   assert.equal(defaultConfig().sttSilenceMs, 650);
 });
 
+test('default Whisper model favors realtime transcription', () => {
+  assert.equal(DEFAULTS.whisperModel, 'Xenova/whisper-base');
+  assert.equal(defaultConfig().whisperModel, 'Xenova/whisper-base');
+});
+
 test('default ambient filler starts disabled', () => {
   assert.equal(DEFAULTS.ambientEnabled, false);
   assert.equal(defaultConfig().ambientEnabled, false);

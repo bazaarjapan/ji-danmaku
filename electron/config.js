@@ -95,9 +95,9 @@ const DEFAULTS = {
 
   // 音声認識バックエンド: 'local'(ローカルWhisper・無料)。
   sttBackend: 'local',
-  // Whisperモデル: tiny=最速/粗い, base=軽い, small=精度と速度のバランス(推奨),
-  // medium=高精度だが重い(WebGPU推奨)。日本語は base だと弱いので既定は small。
-  whisperModel: 'Xenova/whisper-small',
+  // Whisperモデル: tiny=最速/粗い, base=速度と精度のバランス(推奨),
+  // small=日本語精度寄り, medium=高精度だが重い(WebGPU推奨)。
+  whisperModel: 'Xenova/whisper-base',
 
   // 発話の区切り判定: この長さの「間(無音)」で一区切りとみなし、一文まるごと解析する。
   // リアルタイム感を優先し、文中の短い間は許容しつつ反応待ちを短くする。

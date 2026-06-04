@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-small';
+const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-base';
 const DEFAULT_NG_WORDS = ['死ね', '殺す', 'ぶっ殺', '消えろ', 'クズ', 'カス', 'ブス', 'デブ', 'キモい', 'ウザい', '黙れ'];
 const PRESETS = {
   chat: {

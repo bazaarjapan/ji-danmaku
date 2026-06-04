@@ -183,7 +183,9 @@ function captureTargetDisplay() {
 function createControl() {
   controlWin = new BrowserWindow({
     width: 420,
-    height: 640,
+    height: 780,
+    minWidth: 420,
+    minHeight: 720,
     title: 'Ji-Danmaku コントロール',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

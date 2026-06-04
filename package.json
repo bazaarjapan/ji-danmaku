@@ -1,7 +1,7 @@
 {
   "name": "ji-danmaku",
   "version": "1.0.1",
-  "description": "ニコニコ動画風の弾幕をデスクトップ全面にオーバーレイ表示するアプリ。画面とマイクを監視し、Codex/Claude をブレインにして視聴者コメント(弾幕)をリアルタイム生成する。",
+  "description": "ニコニコ動画風の弾幕をデスクトップ全面にオーバーレイ表示するアプリ。画面とマイクを監視し、Codex をブレインにして視聴者コメント(弾幕)をリアルタイム生成する。",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
@@ -64,7 +64,6 @@
     "electron-builder": "^26.8.1"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
-    "ws": "^8.21.0"
+    "@huggingface/transformers": "^4.2.0"
   }
 }

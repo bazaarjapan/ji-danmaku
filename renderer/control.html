@@ -107,7 +107,6 @@
             音声認識エンジン
             <select id="sttBackend">
               <option value="local">ローカルWhisper（既定・無料・オフライン）</option>
-              <option value="openai">GPT Realtime Whisper（手動切替・高精度・従量課金）</option>
             </select>
           </label>
           <label class="field" id="whisperModelField">
@@ -119,25 +118,7 @@
               <option value="Xenova/whisper-medium">medium（高精度・重い）</option>
             </select>
           </label>
-          <div id="openaiKeyField">
-            <label class="field">
-              OpenAI APIキー（GPT Realtime Whisper）
-              <div class="secret-row">
-                <input
-                  type="password"
-                  id="openaiApiKey"
-                  placeholder="sk-..."
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-                <button type="button" id="saveOpenaiApiKey">保存</button>
-                <button type="button" id="clearOpenaiApiKey" class="ghost">削除</button>
-              </div>
-            </label>
-            <div id="openaiKeyStatus" class="hint"></div>
-          </div>
           <div id="sttInfo" class="hint"></div>
-          <div id="sttCost" class="hint cost"></div>
           <div id="sttLog" class="sttlog"></div>
         </div>
       </div>
@@ -165,7 +146,6 @@
         ブレイン（画面を見て弾幕を生成）
         <select id="brain">
           <option value="codex">Codex（推奨・追加課金なし）</option>
-          <option value="anthropic">Claude（ANTHROPIC_API_KEY）</option>
           <option value="mock">なし（フィラーのみ）</option>
         </select>
       </label>

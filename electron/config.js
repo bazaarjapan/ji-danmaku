@@ -19,8 +19,8 @@ const DEFAULTS = {
   preset: 'custom',
 
   // 画面を見て弾幕を生成する間隔(ms)。短いほど反応が良いがコスト/負荷増。
-  // Codex は1回 ~20秒かかるため既定はやや長め。生成中は次サイクルを自動スキップ。
-  captureIntervalMs: 15000,
+  // Codex応答は数秒〜十数秒で揺れる。生成中は次サイクルを自動スキップする。
+  captureIntervalMs: 10000,
 
   // 1回の生成で受け取る弾幕の最大数（発話への反応時）。
   commentsPerBatch: 10,

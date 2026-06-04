@@ -586,7 +586,10 @@ async function captureCycle() {
   if (!running || cycleBusy) return;  // 生成中なら今回の発火はスキップ（プロセス重複防止）
   cycleBusy = true;
   const cycleToken = stopToken;
-  lastBatchAt = Date.now();
+  const cycleStartedAt = Date.now();
+  let captureMs = 0;
+  let generationMs = 0;
+  lastBatchAt = cycleStartedAt;
   let context = { title: '', process: '' };
   let imagePath = null;
   let signature = null;
@@ -617,7 +620,9 @@ async function captureCycle() {
   updatePrivacyDiagnostics(null);
 
   try {
+    const captureStartedAt = Date.now();
     const shot = await scr.captureScreenshot(captureTargetDisplay());
+    captureMs = Date.now() - captureStartedAt;
     if (shot) { imagePath = shot.file; signature = shot.signature; }
   } catch (e) {
     console.error('[capture] screenshot失敗:', e.message);
@@ -707,9 +712,27 @@ async function captureCycle() {
         lastResult: '生成中'
       }
     });
+    const generationStartedAt = Date.now();
     const { source, comments, requestedBrain, fallbackFrom, error } = await generateBatchWithWatchdog({ context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
+    generationMs = Date.now() - generationStartedAt;
     // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
     if (cycleCancelled(cycleToken)) return;
+    let imageBytes = 0;
+    try {
+      if (imageForGen) imageBytes = fs.statSync(imageForGen).size;
+    } catch {}
+    logger.info('ai.cycle_timing', {
+      captureMs,
+      generationMs,
+      totalMs: Date.now() - cycleStartedAt,
+      imageBytes,
+      voiceFocus,
+      voiceOnly,
+      requestedCount: count,
+      returnedCount: comments.length,
+      source,
+      fallbackFrom
+    });
     updateRuntimeDiagnostics({
       ai: {
         status: fallbackFrom ? 'fallback' : 'ready',

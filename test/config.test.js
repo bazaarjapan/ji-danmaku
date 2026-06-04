@@ -104,3 +104,8 @@ test('default ambient filler starts disabled', () => {
   assert.equal(DEFAULTS.ambientEnabled, false);
   assert.equal(defaultConfig().ambientEnabled, false);
 });
+
+test('default capture interval favors responsive generation', () => {
+  assert.equal(DEFAULTS.captureIntervalMs, 10000);
+  assert.equal(defaultConfig().captureIntervalMs, 10000);
+});

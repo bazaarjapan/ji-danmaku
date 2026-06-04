@@ -19,8 +19,8 @@ const DEFAULTS = {
   preset: 'custom',
 
   // 画面を見て弾幕を生成する間隔(ms)。短いほど反応が良いがコスト/負荷増。
-  // Codex は1回 ~20秒かかるため既定はやや長め。生成中は次サイクルを自動スキップ。
-  captureIntervalMs: 15000,
+  // Codex応答は数秒〜十数秒で揺れる。生成中は次サイクルを自動スキップする。
+  captureIntervalMs: 8000,
 
   // 1回の生成で受け取る弾幕の最大数（発話への反応時）。
   commentsPerBatch: 10,
@@ -39,7 +39,7 @@ const DEFAULTS = {
 
   // フィラー弾幕(アンビエント/発話ざわめき)を追加するか。
   // false にすると AI が生成した弾幕だけを流す（www/草/888 等の自動フィラーは出さない）。
-  ambientEnabled: true,
+  ambientEnabled: false,
   // アンビエント(自動)弾幕: AI が無くても常に賑わいを出す。0で無効。
   // 1分あたりのおおよその自動コメント数。
   ambientPerMinute: 40,
@@ -95,13 +95,13 @@ const DEFAULTS = {
 
   // 音声認識バックエンド: 'local'(ローカルWhisper・無料)。
   sttBackend: 'local',
-  // Whisperモデル: tiny=最速/粗い, base=軽い, small=精度と速度のバランス(推奨),
-  // medium=高精度だが重い(WebGPU推奨)。日本語は base だと弱いので既定は small。
-  whisperModel: 'Xenova/whisper-small',
+  // Whisperモデル: tiny=最速/粗い, base=速度と精度のバランス(推奨),
+  // small=日本語精度寄り, medium=高精度だが重い(WebGPU推奨)。
+  whisperModel: 'Xenova/whisper-base',
 
   // 発話の区切り判定: この長さの「間(無音)」で一区切りとみなし、一文まるごと解析する。
-  // 短いと文中の小さな間でも切れて断片化するため、発話の終わりらしい間に合わせる。
-  sttSilenceMs: 1200,
+  // リアルタイム感を優先し、文中の短い間は許容しつつ反応待ちを短くする。
+  sttSilenceMs: 650,
   // 区切りが来ない長い発話を強制的に切る上限(ms)。長文を途中で刻みすぎないよう長め。
   sttMaxMs: 20000,
 

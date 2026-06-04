@@ -94,3 +94,23 @@ test('default voice reactivity starts at a voice-forward balance', () => {
   assert.equal(DEFAULTS.voiceReactivity, 70);
   assert.equal(defaultConfig().voiceReactivity, 70);
 });
+
+test('default STT silence favors faster speech reactions', () => {
+  assert.equal(DEFAULTS.sttSilenceMs, 650);
+  assert.equal(defaultConfig().sttSilenceMs, 650);
+});
+
+test('default Whisper model favors realtime transcription', () => {
+  assert.equal(DEFAULTS.whisperModel, 'Xenova/whisper-base');
+  assert.equal(defaultConfig().whisperModel, 'Xenova/whisper-base');
+});
+
+test('default ambient filler starts disabled', () => {
+  assert.equal(DEFAULTS.ambientEnabled, false);
+  assert.equal(defaultConfig().ambientEnabled, false);
+});
+
+test('default capture interval favors responsive generation', () => {
+  assert.equal(DEFAULTS.captureIntervalMs, 8000);
+  assert.equal(defaultConfig().captureIntervalMs, 8000);
+});

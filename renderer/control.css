@@ -50,7 +50,7 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
 
 .main-toggle {
   display: grid;
-  height: calc(100vh - 54px);
+  height: calc(100vh - 68px);
   min-height: 0;
   grid-template-rows: auto auto minmax(118px, 1fr);
   gap: 10px;

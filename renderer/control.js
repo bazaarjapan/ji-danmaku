@@ -1210,9 +1210,11 @@ function startStt() {
       sttBusy = false;
       if (m.text) { lastTranscript = m.text.slice(-120); pushRecognized(m.text); }
       setSttStatus('待機中', 'ready');
+      setWhisperStatus('準備OK', '次の発話を待っています', 'ready', 100);
     } else if (m.type === 'skipped') {
       sttBusy = false;
       setSttStatus('待機中', 'ready');
+      setWhisperStatus('準備OK', '次の発話を待っています', 'ready', 100);
     } else if (m.type === 'error') {
       sttBusy = false;
       const message = 'Whisperエラー: ' + (m.message || '').slice(0, 80);

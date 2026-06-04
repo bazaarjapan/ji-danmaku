@@ -96,8 +96,8 @@ test('default voice reactivity starts at a voice-forward balance', () => {
 });
 
 test('default STT silence favors faster speech reactions', () => {
-  assert.equal(DEFAULTS.sttSilenceMs, 900);
-  assert.equal(defaultConfig().sttSilenceMs, 900);
+  assert.equal(DEFAULTS.sttSilenceMs, 650);
+  assert.equal(defaultConfig().sttSilenceMs, 650);
 });
 
 test('default ambient filler starts disabled', () => {

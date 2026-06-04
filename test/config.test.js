@@ -94,3 +94,8 @@ test('default voice reactivity starts at a voice-forward balance', () => {
   assert.equal(DEFAULTS.voiceReactivity, 70);
   assert.equal(defaultConfig().voiceReactivity, 70);
 });
+
+test('default STT silence favors faster speech reactions', () => {
+  assert.equal(DEFAULTS.sttSilenceMs, 900);
+  assert.equal(defaultConfig().sttSilenceMs, 900);
+});

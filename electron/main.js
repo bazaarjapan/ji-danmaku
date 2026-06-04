@@ -436,6 +436,37 @@ let dripTimer = null;
 let lastEnqueueAt = 0;   // 直近バッチ到着時刻（生成間隔の実測用）
 let batchInterval = 0;   // 観測した生成間隔(EWMA)
 let dripDeadline = 0;    // 現在のキューを流し切る目標時刻
+let lastVoiceBurstAt = 0;
+
+const VOICE_START_REACTIONS = [
+  'おっ',
+  'きた',
+  'なになに',
+  '声きた',
+  '今の気になる',
+  'それなに',
+  '聞いてる',
+  '話し始めた'
+];
+
+function pickUnique(list, count) {
+  const pool = [...list];
+  const out = [];
+  while (pool.length && out.length < count) {
+    const idx = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+function sendVoiceStartBurst() {
+  const now = Date.now();
+  if (now - lastVoiceBurstAt < 1200) return;
+  lastVoiceBurstAt = now;
+  const count = 1 + Math.floor(Math.random() * 2);
+  const comments = pickUnique(VOICE_START_REACTIONS, count).map((text) => ({ text }));
+  sendComments(comments, 'voice');
+}
 
 // AI生成バッチを「一気に出さず」、次のバッチが来るまで持つよう間隔調整して流す。
 // 各tickで「残り時間 ÷ 残り個数」で間隔を決めるため、末尾ほど自然に伸びて“間”が空きにくい。
@@ -452,7 +483,9 @@ function enqueueDrip(comments) {
   lastEnqueueAt = now;
   dripQueue.push(...comments);
   // 次バッチが来るまで持たせる目標。観測間隔（なければ生成間隔設定）を基準に少し広め。
-  const window = Math.max(4000, batchInterval || cfg.captureIntervalMs || 15000);
+  const voiceRecent = micState.speaking || (micState.transcriptAt && now - micState.transcriptAt < 8000);
+  const baseWindow = batchInterval || cfg.captureIntervalMs || 15000;
+  const window = voiceRecent ? Math.max(3500, Math.round(baseWindow * 0.65)) : Math.max(4000, baseWindow);
   dripDeadline = now + window;
 
   if (dripTimer) return;
@@ -1197,8 +1230,7 @@ ipcMain.on('mic', (_e, state) => {
   // どちらでも AI 生成は前倒しで促す（AI字幕は常に出す）。
   if (state.justSpoke && running) {
     if (cfg.ambientEnabled) {
-      const n = 1 + Math.floor(Math.random() * 2);
-      sendComments(ai.mock.generate(n, lastContext(), cfg.commentTone), 'voice');
+      sendVoiceStartBurst();
     }
     triggerReactiveCycle();
   }

@@ -362,6 +362,7 @@ function bindControls() {
     const value = parseFloat($('micThreshold').value);
     cfg.micThreshold = value;
     $('micThresholdLabel').textContent = value.toFixed(2);
+    updateMicMeters(currentMicLevel);
     patch({ micThreshold: value });
   });
   $('sttEnabled').addEventListener('change', () => {
@@ -697,6 +698,22 @@ function setStoppedInputStatus() {
     0
   );
   setSttInfo('');
+  updateMicMeters(0);
+}
+
+function updateMicMeters(level) {
+  const pct = Math.max(0, Math.min(100, Math.round((Number(level) || 0) * 100)));
+  const settingsBar = $('vuBar');
+  const liveBar = $('liveVuBar');
+  const liveText = $('liveMicLevelText');
+  const marker = $('liveMicThresholdMarker');
+  if (settingsBar) settingsBar.style.width = pct + '%';
+  if (liveBar) liveBar.style.width = pct + '%';
+  if (liveText) liveText.textContent = pct + '%';
+  if (marker) {
+    const threshold = Math.max(2, Math.min(40, (Number(cfg && cfg.micThreshold) || 0.12) * 100));
+    marker.style.left = threshold + '%';
+  }
 }
 
 function setDiagnosticsStatus(text, level) {
@@ -1031,7 +1048,7 @@ async function startMic() {
     }
     const level = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
     currentMicLevel = level;
-    $('vuBar').style.width = (level * 100).toFixed(0) + '%';
+    updateMicMeters(level);
 
     const th = cfg.micThreshold || 0.12;
     const justSpoke = level > th && !speaking;
@@ -1073,7 +1090,7 @@ function stopMic() {
   micStream = null;
   if (audioCtx) audioCtx.close();
   audioCtx = null;
-  $('vuBar').style.width = '0%';
+  updateMicMeters(0);
   $('micInfo').textContent = 'マイク停止';
   stopStt();
   setMicStatus(cfg && cfg.micEnabled ? '停止' : 'OFF', cfg && cfg.micEnabled ? 'idle' : 'muted');

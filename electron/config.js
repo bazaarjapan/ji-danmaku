@@ -54,7 +54,8 @@ const DEFAULTS = {
   // 'auto': Windows 10 build 19041(version 2004)以降でのみ有効化。古いWindows10では
   //         setContentProtection が「真っ黒」描画になりキャプチャを潰すため auto で自動回避。
   // true: 常に有効 / false: 常に無効。
-  overlayContentProtection: 'auto',
+  // 共有用途では Zoom/OBS からも除外されて弾幕が映らないため、既定は共有互換にする。
+  overlayContentProtection: false,
 
   // プライバシー除外: 一致する前面ウィンドウではスクリーンショットもAI生成も止める。
   privacyExclusions: {
@@ -184,7 +185,15 @@ function sanitizeByDefaults(value, defaults) {
 }
 
 function sanitizeImportedConfig(value) {
-  return normalizeConfig(sanitizeByDefaults(value, DEFAULTS) || {});
+  const out = sanitizeByDefaults(value, DEFAULTS) || {};
+  if (
+    value &&
+    Object.prototype.hasOwnProperty.call(value, 'overlayContentProtection') &&
+    [true, false, 'auto'].includes(value.overlayContentProtection)
+  ) {
+    out.overlayContentProtection = value.overlayContentProtection;
+  }
+  return normalizeConfig(out);
 }
 
 function exportableConfig(value) {
@@ -199,6 +208,12 @@ function normalizeConfig(cfg) {
   const out = { ...(cfg || {}) };
   if (!['codex', 'mock'].includes(out.brain)) out.brain = DEFAULTS.brain;
   if (out.sttBackend !== 'local') out.sttBackend = DEFAULTS.sttBackend;
+  if (
+    Object.prototype.hasOwnProperty.call(out, 'overlayContentProtection') &&
+    ![true, false, 'auto'].includes(out.overlayContentProtection)
+  ) {
+    out.overlayContentProtection = DEFAULTS.overlayContentProtection;
+  }
   delete out.openaiApiKey;
   delete out.openaiApiKeyEncrypted;
   delete out.openaiSttModel;

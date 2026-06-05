@@ -114,3 +114,16 @@ test('default capture interval favors responsive generation', () => {
   assert.equal(DEFAULTS.captureIntervalMs, 8000);
   assert.equal(defaultConfig().captureIntervalMs, 8000);
 });
+
+test('default overlay mode is compatible with Zoom and OBS display capture', () => {
+  assert.equal(DEFAULTS.overlayContentProtection, false);
+  assert.equal(defaultConfig().overlayContentProtection, false);
+});
+
+test('sanitizeImportedConfig keeps legacy automatic overlay capture protection', () => {
+  assert.deepEqual(sanitizeImportedConfig({ overlayContentProtection: 'auto' }), {
+    brain: DEFAULTS.brain,
+    sttBackend: 'local',
+    overlayContentProtection: 'auto'
+  });
+});

@@ -184,7 +184,7 @@ function sanitizeByDefaults(value, defaults) {
   return out;
 }
 
-function sanitizeImportedConfig(value) {
+function sanitizeConfigPayload(value) {
   const out = sanitizeByDefaults(value, DEFAULTS) || {};
   if (
     value &&
@@ -196,8 +196,12 @@ function sanitizeImportedConfig(value) {
   return normalizeConfig(out);
 }
 
+function sanitizeImportedConfig(value) {
+  return sanitizeConfigPayload(value);
+}
+
 function exportableConfig(value) {
-  return normalizeConfig(sanitizeByDefaults(value, DEFAULTS) || {});
+  return sanitizeConfigPayload(value);
 }
 
 function defaultConfig() {

@@ -127,3 +127,12 @@ test('sanitizeImportedConfig keeps legacy automatic overlay capture protection',
     overlayContentProtection: 'auto'
   });
 });
+
+test('exportableConfig keeps automatic overlay capture protection', () => {
+  const result = exportableConfig({
+    ...DEFAULTS,
+    overlayContentProtection: 'auto'
+  });
+
+  assert.equal(result.overlayContentProtection, 'auto');
+});

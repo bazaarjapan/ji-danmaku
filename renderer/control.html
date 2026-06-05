@@ -247,6 +247,15 @@
 
     <section class="privacy-sec">
       <h2>プライバシー・緊急停止</h2>
+      <label class="field">
+        Zoom/OBS共有
+        <select id="overlayContentProtection">
+          <option value="false">弾幕を共有に映す</option>
+          <option value="auto">AIスクショから隠す（自動）</option>
+          <option value="true">AIスクショから隠す（強制）</option>
+        </select>
+        <span class="hint">ZoomやOBSで全画面共有するときは「弾幕を共有に映す」を使います。</span>
+      </label>
       <div class="row">
         <label><input type="checkbox" id="privacyExclusionsEnabled" /> 除外ルールを有効にする</label>
       </div>

@@ -1101,6 +1101,12 @@ function normalizeConfigPatch(patch) {
   if (Object.prototype.hasOwnProperty.call(nextPatch, 'ngMode') && !['drop', 'mask'].includes(nextPatch.ngMode)) {
     nextPatch.ngMode = 'drop';
   }
+  if (
+    Object.prototype.hasOwnProperty.call(nextPatch, 'overlayContentProtection') &&
+    ![true, false, 'auto'].includes(nextPatch.overlayContentProtection)
+  ) {
+    nextPatch.overlayContentProtection = false;
+  }
   return { nextPatch, keyChanged, modelChanged };
 }
 
@@ -1118,7 +1124,13 @@ function afterConfigChanged(nextPatch, hadMulti, keyChanged, modelChanged) {
       shortcut: cfg.emergencyStopShortcut || 'F9'
     }
   });
-  if (nextPatch && 'multiMonitor' in nextPatch && nextPatch.multiMonitor !== hadMulti) {
+  if (
+    nextPatch &&
+    (
+      ('multiMonitor' in nextPatch && nextPatch.multiMonitor !== hadMulti) ||
+      Object.prototype.hasOwnProperty.call(nextPatch, 'overlayContentProtection')
+    )
+  ) {
     createOverlays();
   } else {
     setOverlayStyle();

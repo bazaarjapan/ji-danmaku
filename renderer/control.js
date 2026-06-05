@@ -150,6 +150,7 @@ function reflectConfig() {
   $('privacyExclusionsEnabled').checked = privacy.enabled !== false;
   $('privacyProcessNames').value = listToText(privacy.processNames);
   $('privacyTitlePatterns').value = listToText(privacy.titlePatterns);
+  $('overlayContentProtection').value = overlayContentProtectionToControlValue(cfg.overlayContentProtection);
   $('ngMode').value = cfg.ngMode === 'mask' ? 'mask' : 'drop';
   renderNgWords();
   $('emergencyShortcut').textContent = cfg.emergencyStopShortcut || 'F9';
@@ -199,6 +200,18 @@ function textToList(value) {
     .split(/[\r\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function overlayContentProtectionToControlValue(value) {
+  if (value === true) return 'true';
+  if (value === 'auto') return 'auto';
+  return 'false';
+}
+
+function overlayContentProtectionFromControlValue(value) {
+  if (value === 'true') return true;
+  if (value === 'auto') return 'auto';
+  return false;
 }
 
 function normalizeNgWords(value) {
@@ -393,6 +406,11 @@ function bindControls() {
   });
   $('privacyTitlePatterns').addEventListener('input', () => {
     patch({ privacyExclusions: { titlePatterns: textToList($('privacyTitlePatterns').value) } });
+  });
+  $('overlayContentProtection').addEventListener('change', () => {
+    const value = overlayContentProtectionFromControlValue($('overlayContentProtection').value);
+    cfg.overlayContentProtection = value;
+    patch({ overlayContentProtection: value });
   });
   $('ngMode').addEventListener('change', () => {
     cfg.ngMode = $('ngMode').value === 'mask' ? 'mask' : 'drop';

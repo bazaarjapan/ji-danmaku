@@ -466,9 +466,11 @@ async function generate({ count, context, transcript, imagePath, recent, voiceFo
       return null;
     }
     consecutiveFails = 0;   // 成功 → 失敗カウントをリセット
+    warned = false;
     return normalizeComments(parsed);
   } catch (e) {
     warnOnce(e.message);
+    logger.error('codex.generate_failed', { message: e.message, code: e.code || '' });
     noteFailure(maxFailures, backoffMs);
     return null;
   } finally {

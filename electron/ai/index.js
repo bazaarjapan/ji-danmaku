@@ -36,7 +36,7 @@ async function generateBatch(cfg, { context, transcript, imagePath, recent, coun
     return { source: brain, requestedBrain: brain, comments: result, fallbackFrom: '', error: '' };
   }
   if (brain !== 'mock') {
-    logger.warn('ai.fallback_to_mock', { brain, count: n });
+    logger.warn('ai.fallback_to_mock', { brain, count: n, error: errorMessage });
   }
   // フォールバック: 文脈を活かしたアンビエント
   return {

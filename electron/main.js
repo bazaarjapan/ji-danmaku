@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, dialog, systemPreferences } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -12,6 +12,11 @@ const { dedupeAiComments, filterNgComments, normalizeNgWords } = require('./comm
 const logger = require('./logger');
 const privacyRules = require('./privacy-rules');
 const { codexCommandCandidates, codexCommandTarget } = require('./codex-command');
+const {
+  accessibilityPermissionItem,
+  microphonePermissionItem,
+  screenPermissionItem
+} = require('./mac-permissions');
 
 // 開発時だけ .env.local（プロジェクト直下）を読み、未設定の環境変数を補う。
 function loadEnvLocal() {
@@ -104,6 +109,13 @@ function shouldExcludeFromCapture() {
   if (process.platform !== 'win32') return true;  // macOS等は通常どおり除外可
   const build = parseInt((os.release().split('.')[2] || '0'), 10);
   return build >= 19041;
+}
+
+function capturePermissionHint() {
+  if (process.platform === 'darwin') {
+    return 'macOSの「画面収録」権限、ディスプレイ接続、セキュリティ設定を確認してください';
+  }
+  return '画面キャプチャ権限やセキュリティソフトの制限を確認してください';
 }
 
 // 1ディスプレイ分のオーバーレイを生成する。
@@ -345,23 +357,74 @@ function createTray() {
   updateTrayMenu();
 }
 
+function toggleRunning() {
+  if (running) stopRunning();
+  else startRunning();
+}
+
 function updateTrayMenu() {
-  if (!tray) return;
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const template = [
     { label: 'コントロールを表示', click: summonControl },
     {
       label: running ? '弾幕を停止' : '弾幕を開始',
-      click: () => { if (running) stopRunning(); else startRunning(); }
+      click: toggleRunning
     },
     { label: '緊急停止', enabled: running, click: () => emergencyStop('tray') },
     { type: 'separator' },
     { label: '終了', click: quitFromTray }
+  ];
+  if (tray) tray.setContextMenu(Menu.buildFromTemplate(template));
+  updateApplicationMenu();
+  updateDockMenu();
+}
+
+function updateApplicationMenu() {
+  if (process.platform !== 'darwin') return;
+  const emergencyShortcut = cfg.emergencyStopShortcut || 'F9';
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: 'Ji-Danmaku',
+      submenu: [
+        { role: 'about', label: 'Ji-Danmaku について' },
+        { type: 'separator' },
+        { label: 'コントロールを表示', accelerator: 'F7', click: summonControl },
+        { label: running ? '弾幕を停止' : '弾幕を開始', accelerator: 'F8', click: toggleRunning },
+        { label: '緊急停止', accelerator: emergencyShortcut, enabled: running, click: () => emergencyStop('menu') },
+        { type: 'separator' },
+        { role: 'hide', label: 'Ji-Danmaku を隠す' },
+        { role: 'hideOthers', label: 'ほかを隠す' },
+        { role: 'unhide', label: 'すべて表示' },
+        { type: 'separator' },
+        { label: 'Ji-Danmaku を終了', accelerator: 'Command+Q', click: quitFromTray }
+      ]
+    },
+    { role: 'editMenu', label: '編集' },
+    { role: 'viewMenu', label: '表示' },
+    { role: 'windowMenu', label: 'ウィンドウ' }
   ]));
+}
+
+function updateDockMenu() {
+  if (process.platform !== 'darwin' || !app.dock) return;
+  try {
+    app.dock.show();
+    app.dock.setBadge(running ? 'ON' : '');
+    app.dock.setMenu(Menu.buildFromTemplate([
+      { label: 'コントロールを表示', click: summonControl },
+      { label: running ? '弾幕を停止' : '弾幕を開始', click: toggleRunning },
+      { label: '緊急停止', enabled: running, click: () => emergencyStop('dock') },
+      { type: 'separator' },
+      { label: 'Ji-Danmaku を終了', click: quitFromTray }
+    ]));
+  } catch {}
 }
 
 function quitFromTray() {
   isQuitting = true;
   try { stopRunning({ clearOverlay: true }); } catch {}
+  if (process.platform === 'darwin' && app.dock) {
+    try { app.dock.setBadge(''); } catch {}
+  }
   app.quit();
 }
 
@@ -1059,16 +1122,43 @@ async function checkCaptureSetup() {
     if (shot && shot.file && fs.existsSync(shot.file)) {
       return setupItem('capture', '画面キャプチャ', 'ok', 'スクリーンショットを取得できます');
     }
-    return setupItem('capture', '画面キャプチャ', 'error', 'スクリーンショットが空でした', '画面キャプチャ権限やディスプレイ接続を確認してください');
+    return setupItem('capture', '画面キャプチャ', 'error', 'スクリーンショットが空でした', capturePermissionHint());
   } catch (e) {
-    return setupItem('capture', '画面キャプチャ', 'error', '取得に失敗: ' + e.message, '画面キャプチャ権限やセキュリティソフトの制限を確認してください');
+    return setupItem('capture', '画面キャプチャ', 'error', '取得に失敗: ' + e.message, capturePermissionHint());
   }
+}
+
+function getMediaAccessStatus(mediaType) {
+  try {
+    return systemPreferences.getMediaAccessStatus(mediaType);
+  } catch {
+    return 'unknown';
+  }
+}
+
+function isAccessibilityTrusted() {
+  try {
+    return systemPreferences.isTrustedAccessibilityClient(false);
+  } catch {
+    return false;
+  }
+}
+
+function checkMacPermissionsSetup() {
+  if (process.platform !== 'darwin') return [];
+  const voiceEnabled = cfg.micEnabled !== false || cfg.sttEnabled !== false;
+  return [
+    screenPermissionItem(getMediaAccessStatus('screen')),
+    microphonePermissionItem(getMediaAccessStatus('microphone'), voiceEnabled),
+    accessibilityPermissionItem(isAccessibilityTrusted())
+  ];
 }
 
 async function runSetupDiagnostics() {
   const checks = [
     await checkCodexSetup(),
-    await checkCaptureSetup()
+    await checkCaptureSetup(),
+    ...checkMacPermissionsSetup()
   ];
   const status = summarizeSetupStatus(checks);
   const updatedAt = Date.now();
@@ -1146,6 +1236,7 @@ function afterConfigChanged(nextPatch, hadMulti, keyChanged, modelChanged) {
     clearInterval(captureTimer);
     captureTimer = setInterval(captureCycle, Math.max(3000, cfg.captureIntervalMs));
   }
+  updateApplicationMenu();
 }
 
 function applyConfigPatch(patch) {
@@ -1307,9 +1398,7 @@ app.whenReady().then(() => {
   screen.on('display-metrics-changed', scheduleOverlayRebuild);
 
   // F8 で配信ON/OFF
-  const f8Registered = globalShortcut.register('F8', () => {
-    if (running) stopRunning(); else startRunning();
-  });
+  const f8Registered = globalShortcut.register('F8', toggleRunning);
   // F7 でコントロール画面を最前面に呼び出す（裏に隠れた時の救済）
   const f7Registered = globalShortcut.register('F7', summonControl);
   // F9 で緊急停止: 画面キャプチャ・弾幕送出・マイク監視を即停止する。

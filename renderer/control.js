@@ -3,6 +3,9 @@
 const $ = (id) => document.getElementById(id);
 const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-base';
 const DEFAULT_NG_WORDS = ['死ね', '殺す', 'ぶっ殺', '消えろ', 'クズ', 'カス', 'ブス', 'デブ', 'キモい', 'ウザい', '黙れ'];
+const PLATFORM_VALUE = String(navigator.platform || '').toLowerCase();
+const PLATFORM_LABEL = PLATFORM_VALUE.includes('mac') ? 'macOS' : (PLATFORM_VALUE.includes('win') ? 'Windows' : 'OS');
+const MIC_UTILS = window.JiMicUtils || {};
 const PRESETS = {
   chat: {
     captureIntervalMs: 12000,
@@ -154,6 +157,7 @@ function reflectConfig() {
   $('ngMode').value = cfg.ngMode === 'mask' ? 'mask' : 'drop';
   renderNgWords();
   $('emergencyShortcut').textContent = cfg.emergencyStopShortcut || 'F9';
+  repairMicThresholdIfNeeded('startup');
   setSlider('micThreshold', cfg.micThreshold || 0.12, (v) => Number(v).toFixed(2), 'micThresholdLabel');
   setSlider('captureIntervalMs', cfg.captureIntervalMs, (v) => (v / 1000).toFixed(0) + '秒', 'capLabel');
   setSlider('voiceReactivity', cfg.voiceReactivity, (v) => `声:${v}% / 画面:${100 - v}%`, 'vrLabel');
@@ -372,11 +376,7 @@ function bindControls() {
   $('refreshMicDevices').addEventListener('click', refreshMicDevices);
   $('calibrateMic').addEventListener('click', calibrateMic);
   $('micThreshold').addEventListener('input', () => {
-    const value = parseFloat($('micThreshold').value);
-    cfg.micThreshold = value;
-    $('micThresholdLabel').textContent = value.toFixed(2);
-    updateMicMeters(currentMicLevel);
-    patch({ micThreshold: value });
+    setMicThreshold(parseFloat($('micThreshold').value), 'manual');
   });
   $('sttEnabled').addEventListener('change', () => {
     cfg.sttEnabled = $('sttEnabled').checked;
@@ -519,7 +519,7 @@ function isSelectedDeviceMissing(error) {
 function micErrorMessage(error) {
   if (!error) return 'マイク取得に失敗しました';
   if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
-    return 'マイク権限が拒否されています。Windowsまたはブラウザの権限を確認してください';
+    return `マイク権限が拒否されています。${PLATFORM_LABEL}またはブラウザの権限を確認してください`;
   }
   if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
     return '選択したマイクが見つかりません。デバイス更新または既定のマイクを選んでください';
@@ -531,21 +531,38 @@ function micErrorMessage(error) {
 }
 
 function clampMicThreshold(value) {
-  return Math.max(0.02, Math.min(0.4, value));
+  return MIC_UTILS.clampMicThreshold ? MIC_UTILS.clampMicThreshold(value) : Math.max(0.02, Math.min(0.4, value));
 }
 
 function computeCalibratedThreshold(samples) {
-  const levels = samples.filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
-  if (!levels.length) return { threshold: 0.12, noiseFloor: 0, peak: 0 };
-  const sum = levels.reduce((acc, value) => acc + value, 0);
-  const noiseFloor = sum / levels.length;
-  const peak = levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.95))] || 0;
-  const threshold = clampMicThreshold(Math.max(0.04, noiseFloor * 2.8, peak * 1.7));
-  return {
-    threshold: Number(threshold.toFixed(2)),
-    noiseFloor: Number(noiseFloor.toFixed(3)),
-    peak: Number(peak.toFixed(3))
-  };
+  if (MIC_UTILS.computeCalibratedThreshold) return MIC_UTILS.computeCalibratedThreshold(samples);
+  return { threshold: 0.12, noiseFloor: 0, peak: 0 };
+}
+
+function repairMicThresholdIfNeeded(reason) {
+  if (!cfg || !MIC_UTILS.needsThresholdRepair || !MIC_UTILS.repairedThreshold) return false;
+  if (!MIC_UTILS.needsThresholdRepair(cfg)) return false;
+  const previous = Number(cfg.micThreshold || 0.12);
+  const next = setMicThreshold(MIC_UTILS.repairedThreshold(cfg), reason, { silent: true });
+  const suffix = reason === 'startup' ? '保存済み設定を補正しました' : '環境音に合わせて補正しました';
+  setCalibrationStatus(`しきい値 ${previous.toFixed(2)} → ${next.toFixed(2)}（${suffix}）`, 'warn');
+  return true;
+}
+
+function setMicThreshold(value, reason, options = {}) {
+  const previous = Number(cfg && cfg.micThreshold || 0.12);
+  const normalizer = MIC_UTILS.normalizeThresholdForCalibration;
+  const next = normalizer
+    ? normalizer(value, cfg && cfg.micCalibration)
+    : clampMicThreshold(value);
+  cfg.micThreshold = next;
+  if ($('micThreshold')) setSlider('micThreshold', next, (v) => Number(v).toFixed(2), 'micThresholdLabel');
+  updateMicMeters(currentMicLevel);
+  patch({ micThreshold: next });
+  if (!options.silent && reason === 'manual' && Number.isFinite(value) && next > value) {
+    setCalibrationStatus(`環境音が大きいため ${previous.toFixed(2)} → ${next.toFixed(2)} 未満には下げません`, 'warn');
+  }
+  return next;
 }
 
 function isWhisperModel(value) {
@@ -834,7 +851,7 @@ async function checkMicSetup() {
     const track = stream.getAudioTracks()[0];
     return setupItem('mic', 'マイク', 'ok', `取得できます: ${(track && track.label) || selectedMicLabel()}`);
   } catch (e) {
-    return setupItem('mic', 'マイク', e.name === 'NotAllowedError' ? 'error' : 'warn', micSetupErrorMessage(e), '入力デバイス、Windowsのマイク権限、他アプリの使用状況を確認してください');
+    return setupItem('mic', 'マイク', e.name === 'NotAllowedError' ? 'error' : 'warn', micSetupErrorMessage(e), `入力デバイス、${PLATFORM_LABEL}のマイク権限、他アプリの使用状況を確認してください`);
   } finally {
     if (stream) stream.getTracks().forEach((track) => track.stop());
     refreshMicDevices();
@@ -991,7 +1008,7 @@ function setRunning(r) {
 
 // ---- マイク監視 --------------------------------------------------------
 
-let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null;
+let audioCtx = null, analyser = null, micStream = null, micRAF = null, scriptNode = null, silentGain = null;
 let micStartToken = 0;
 let currentMicLevel = 0, micNoiseFrames = 0, calibrationActive = false;
 let lastTranscript = '', speaking = false, speakDecay = 0;
@@ -1042,6 +1059,7 @@ async function startMic() {
     setStoppedInputStatus();
     return;
   }
+  repairMicThresholdIfNeeded('start');
   micStream = stream;
   await refreshMicDevices();
   if (token !== micStartToken || !micStream || micStream !== stream) {
@@ -1087,7 +1105,10 @@ async function startMic() {
   scriptNode = audioCtx.createScriptProcessor(STT_CHUNK, 1, 1);
   scriptNode.onaudioprocess = onAudioFrame;
   src.connect(scriptNode);
-  scriptNode.connect(audioCtx.destination); // 発火のため接続（出力は無音）
+  silentGain = audioCtx.createGain();
+  silentGain.gain.value = 0;
+  scriptNode.connect(silentGain);
+  silentGain.connect(audioCtx.destination); // ScriptProcessor発火用。マイク音は出力しない。
 
   if (cfg.sttEnabled) startStt();
   else {
@@ -1104,6 +1125,7 @@ function stopMic() {
   if (micRAF) cancelAnimationFrame(micRAF);
   micRAF = null;
   if (scriptNode) { try { scriptNode.disconnect(); } catch {} scriptNode.onaudioprocess = null; scriptNode = null; }
+  if (silentGain) { try { silentGain.disconnect(); } catch {} silentGain = null; }
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   micStream = null;
   if (audioCtx) audioCtx.close();
@@ -1161,19 +1183,24 @@ async function calibrateMic() {
     return;
   }
   const result = computeCalibratedThreshold(samples);
-  cfg.micThreshold = result.threshold;
-  setSlider('micThreshold', result.threshold, (v) => Number(v).toFixed(2), 'micThresholdLabel');
+  const calibration = {
+    noiseFloor: result.noiseFloor,
+    peak: result.peak,
+    calibratedAt: new Date().toISOString()
+  };
+  const threshold = MIC_UTILS.normalizeThresholdForCalibration
+    ? MIC_UTILS.normalizeThresholdForCalibration(result.threshold, calibration)
+    : result.threshold;
+  cfg.micThreshold = threshold;
+  cfg.micCalibration = calibration;
+  setSlider('micThreshold', threshold, (v) => Number(v).toFixed(2), 'micThresholdLabel');
   patch({
-    micThreshold: result.threshold,
-    micCalibration: {
-      noiseFloor: result.noiseFloor,
-      peak: result.peak,
-      calibratedAt: new Date().toISOString()
-    }
+    micThreshold: threshold,
+    micCalibration: calibration
   });
   const level = result.peak > 0.18 ? 'warn' : 'ok';
   const suffix = result.peak > 0.18 ? ' 周囲音が大きめです' : '';
-  setCalibrationStatus(`しきい値を ${result.threshold.toFixed(2)} に調整しました${suffix}`, level);
+  setCalibrationStatus(`しきい値を ${threshold.toFixed(2)} に調整しました${suffix}`, level);
 }
 
 // ---- ローカルWhisper (Web Worker) --------------------------------------

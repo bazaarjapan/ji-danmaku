@@ -146,6 +146,9 @@ function createOverlayForDisplay(display) {
     console.log('[overlay] content protection をスキップ（古いWindowsビルド）。弾幕がキャプチャに写る可能性があります。');
   }
   win.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
+  win.webContents.once('did-finish-load', () => {
+    if (!win.isDestroyed()) win.webContents.send('style', overlayStylePayload());
+  });
   win.on('closed', () => { overlayWins = overlayWins.filter((w) => w !== win); });
   return win;
 }
@@ -421,15 +424,19 @@ function sendComments(comments, source) {
   broadcastOverlay('danmaku', { comments: list, source });
 }
 
-function setOverlayStyle() {
-  if (!overlayWins.length) return;
-  broadcastOverlay('style', {
+function overlayStylePayload() {
+  return {
     fontSize: cfg.fontSize,
     speedMs: cfg.speedMs,
     opacity: cfg.opacity,
     maxOnScreen: cfg.maxOnScreen,
     safeZone: cfg.safeZone
-  });
+  };
+}
+
+function setOverlayStyle() {
+  if (!overlayWins.length) return;
+  broadcastOverlay('style', overlayStylePayload());
 }
 
 // AI生成バッチを間隔内で少しずつ流す（連続感を出す）。

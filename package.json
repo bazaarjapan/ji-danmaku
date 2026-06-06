@@ -7,7 +7,12 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "node --test",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:all": "electron-builder --win --mac",
+    "dist:mac:release": "node scripts/verify-release-env.js mac && electron-builder --mac -c electron-builder.release.cjs",
+    "dist:release": "node scripts/verify-release-env.js mac && electron-builder --win --mac -c electron-builder.release.cjs"
   },
   "author": "",
   "license": "MIT",
@@ -15,6 +20,7 @@
     "appId": "com.bazaarjapan.ji-danmaku",
     "productName": "Ji-Danmaku",
     "asar": false,
+    "afterPack": "scripts/after-pack.js",
     "files": [
       "**/*",
       "!.env",
@@ -49,6 +55,24 @@
       ],
       "signAndEditExecutable": false
     },
+    "mac": {
+      "identity": null,
+      "icon": "build/icon-mac.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.entertainment",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Ji-Danmaku uses microphone input to generate voice-reactive danmaku comments.",
+        "NSScreenCaptureDescription": "Ji-Danmaku captures the screen to generate context-aware danmaku comments."
+      }
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "nsis": {
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "guid": "8966e3f8-5e96-523e-b4b4-d6c86404e297",
@@ -60,7 +84,8 @@
     }
   },
   "devDependencies": {
-    "electron": "^33.2.0",
+    "@electron/notarize": "^3.1.1",
+    "electron": "^42.3.3",
     "electron-builder": "^26.8.1"
   },
   "dependencies": {

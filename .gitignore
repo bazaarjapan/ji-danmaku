@@ -3,3 +3,4 @@ electron-*.log
 dist/
 .env.local
 .env
+*.certSigningRequest

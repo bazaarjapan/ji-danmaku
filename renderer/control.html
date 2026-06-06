@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="control.css" />
+  <title>Ji-Danmaku コントロール</title>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Ji-Danmaku</h1>
+    <button id="menuToggle" class="icon-btn" type="button" title="設定" aria-label="設定を開く" aria-controls="settingsPanel" aria-expanded="false">☰</button>
+  </header>
+
+  <section class="main-toggle">
+    <div class="live-console" aria-live="polite">
+      <div class="console-head">
+        <div>
+          <span class="eyebrow">現在の状況</span>
+          <strong id="mainStatusText">停止中</strong>
+        </div>
+        <span id="mainModeBadge" class="mode-badge off">STANDBY</span>
+      </div>
+      <div class="signal-grid">
+        <div id="micStateCard" class="signal-card" data-state="idle">
+          <span>マイク</span>
+          <strong id="micStateText">停止</strong>
+        </div>
+        <div id="sttStateCard" class="signal-card" data-state="idle">
+          <span>文字起こし</span>
+          <strong id="sttStateText">停止</strong>
+        </div>
+        <div id="whisperStateCard" class="signal-card" data-state="idle">
+          <span>Whisper</span>
+          <strong id="whisperStateText">未起動</strong>
+        </div>
+      </div>
+      <div class="main-meter" aria-label="音声レベル">
+        <div class="main-meter-head">
+          <span>音声レベル</span>
+          <strong id="liveMicLevelText">0%</strong>
+        </div>
+        <div class="live-vu">
+          <div id="liveVuBar"></div>
+          <i id="liveMicThresholdMarker"></i>
+        </div>
+      </div>
+      <div class="whisper-strip">
+        <span id="whisperDetailText">スタートすると文字起こしを準備します</span>
+        <div class="progress"><div id="whisperProgressBar"></div></div>
+      </div>
+      <div class="diag-panel" aria-label="ライブ診断">
+        <div id="diagAiRow" class="diag-row" data-state="idle">
+          <span>AI生成</span>
+          <strong id="diagAiText">未実行</strong>
+        </div>
+        <div id="diagFallbackRow" class="diag-row" data-state="idle">
+          <span>フォールバック</span>
+          <strong id="diagFallbackText">なし</strong>
+        </div>
+        <div id="diagCodexRow" class="diag-row" data-state="idle">
+          <span>Codex</span>
+          <strong id="diagCodexText">待機</strong>
+        </div>
+        <div id="diagSttRow" class="diag-row" data-state="idle">
+          <span>STT</span>
+          <strong id="diagSttText">停止</strong>
+        </div>
+      </div>
+      <div id="diagDetail" class="diag-detail"></div>
+      <div id="privacyNotice" class="privacy-notice hidden"></div>
+    </div>
+    <button id="toggle" class="big-btn off">▶ 字弾幕スタート</button>
+    <div class="live-transcript" aria-live="polite">
+      <span>文字起こし</span>
+      <p id="mainTranscript">まだ文字起こしはありません</p>
+    </div>
+  </section>
+
+  <div id="settingsBackdrop" class="settings-backdrop hidden"></div>
+  <aside id="settingsPanel" class="settings-panel hidden" aria-hidden="true">
+    <div class="settings-head">
+      <h2>設定</h2>
+      <button id="menuClose" class="icon-btn" type="button" title="閉じる" aria-label="設定を閉じる">×</button>
+    </div>
+
+    <section class="mic">
+      <h2>音声・マイク</h2>
+      <div class="row">
+        <label><input type="checkbox" id="micEnabled" /> マイク監視（喋ると弾幕が反応）</label>
+      </div>
+
+      <div id="micDetails">
+        <div class="vu"><div id="vuBar"></div></div>
+        <div id="micInfo" class="hint">マイク未開始</div>
+        <label class="field">
+          入力デバイス
+          <select id="micDeviceId">
+            <option value="">既定のマイク</option>
+          </select>
+        </label>
+        <label class="field">
+          発話しきい値: <span id="micThresholdLabel"></span>
+          <input type="range" id="micThreshold" min="0.02" max="0.40" step="0.01" />
+        </label>
+        <div class="mic-actions">
+          <button type="button" id="refreshMicDevices" class="ghost">デバイス更新</button>
+          <button type="button" id="calibrateMic">自動調整</button>
+        </div>
+        <div id="micCalibrationStatus" class="hint"></div>
+
+        <div class="row">
+          <label><input type="checkbox" id="sttEnabled" /> 発話を文字起こしして反応させる</label>
+        </div>
+
+        <div id="sttOptions">
+          <label class="field">
+            音声認識エンジン
+            <select id="sttBackend">
+              <option value="local">ローカルWhisper（既定・無料・オフライン）</option>
+            </select>
+          </label>
+          <label class="field" id="whisperModelField">
+            Whisperモデル
+            <select id="whisperModel">
+              <option value="Xenova/whisper-tiny">tiny（最速・粗い）</option>
+              <option value="Xenova/whisper-base">base（既定・速度優先）</option>
+              <option value="Xenova/whisper-small">small（精度優先）</option>
+              <option value="Xenova/whisper-medium">medium（高精度・重い）</option>
+            </select>
+          </label>
+          <div id="sttInfo" class="hint"></div>
+          <div id="sttLog" class="sttlog"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="preset-sec">
+      <h2>用途プリセット</h2>
+      <label class="field">
+        プリセット
+        <select id="preset">
+          <option value="custom">手動調整</option>
+          <option value="chat">雑談</option>
+          <option value="work">作業配信</option>
+          <option value="game">ゲーム</option>
+          <option value="presentation">発表・会議</option>
+          <option value="quiet">静かめ</option>
+          <option value="lively">にぎやか</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="brain">
+      <h2>AIブレイン</h2>
+      <label class="field">
+        ブレイン（画面を見て弾幕を生成）
+        <select id="brain">
+          <option value="codex">Codex（推奨・追加課金なし）</option>
+          <option value="mock">なし（フィラーのみ）</option>
+        </select>
+      </label>
+      <label class="field">
+        生成間隔: <span id="capLabel"></span>
+        <input type="range" id="captureIntervalMs" min="4000" max="20000" step="1000" />
+      </label>
+    </section>
+
+    <section class="flow">
+      <h2>弾幕の出し方</h2>
+      <label class="field">
+        ノリ・キャラクター
+        <select id="commentTone">
+          <option value="balanced">標準</option>
+          <option value="gentle">やさしめ</option>
+          <option value="tsukkomi">ツッコミ多め</option>
+          <option value="kusa">草多め</option>
+          <option value="live">実況多め</option>
+          <option value="polite">敬語寄り</option>
+          <option value="calm">落ち着きめ</option>
+        </select>
+      </label>
+      <label class="field">
+        反応バランス: <span id="vrLabel"></span>
+        <input type="range" id="voiceReactivity" min="0" max="100" step="5" />
+        <span class="hint">右=声に反応 / 左=画面に反応</span>
+      </label>
+      <div class="row">
+        <label><input type="checkbox" id="ambientEnabled" /> フィラー弾幕を追加（OFFでAI生成のみ）</label>
+      </div>
+      <label class="field" id="ambientField">
+        フィラー密度(/分): <span id="ambLabel"></span>
+        <input type="range" id="ambientPerMinute" min="0" max="120" step="5" />
+      </label>
+    </section>
+
+    <section class="look">
+      <h2>弾幕の見た目</h2>
+      <label class="field">
+        流れる速さ: <span id="spdLabel"></span>
+        <input type="range" id="speedMs" min="4000" max="14000" step="500" />
+      </label>
+      <label class="field">
+        文字サイズ: <span id="fsLabel"></span>
+        <input type="range" id="fontSize" min="16" max="56" step="2" />
+      </label>
+      <label class="field">
+        不透明度: <span id="opLabel"></span>
+        <input type="range" id="opacity" min="0.3" max="1" step="0.02" />
+      </label>
+      <div class="safe-zone-grid">
+        <label class="field">
+          上余白: <span id="safeZoneTopLabel"></span>
+          <input type="range" id="safeZoneTop" min="0" max="400" step="10" />
+        </label>
+        <label class="field">
+          下余白: <span id="safeZoneBottomLabel"></span>
+          <input type="range" id="safeZoneBottom" min="0" max="400" step="10" />
+        </label>
+        <label class="field">
+          左余白: <span id="safeZoneLeftLabel"></span>
+          <input type="range" id="safeZoneLeft" min="0" max="400" step="10" />
+        </label>
+        <label class="field">
+          右余白: <span id="safeZoneRightLabel"></span>
+          <input type="range" id="safeZoneRight" min="0" max="400" step="10" />
+        </label>
+      </div>
+    </section>
+
+    <section class="ng-sec">
+      <h2>NGワード</h2>
+      <label class="field">
+        処理モード
+        <select id="ngMode">
+          <option value="drop">除外する</option>
+          <option value="mask">伏字にする</option>
+        </select>
+      </label>
+      <div class="ng-add-row">
+        <input type="text" id="ngWordInput" placeholder="NGワードを追加" spellcheck="false" />
+        <button id="addNgWord" type="button">追加</button>
+      </div>
+      <div id="ngWordList" class="ng-list"></div>
+      <button id="resetNgWords" type="button" class="ghost full">既定に戻す</button>
+      <div id="ngWordStatus" class="hint"></div>
+    </section>
+
+    <section class="privacy-sec">
+      <h2>プライバシー・緊急停止</h2>
+      <label class="field">
+        Zoom/OBS共有
+        <select id="overlayContentProtection">
+          <option value="false">弾幕を共有に映す</option>
+          <option value="auto">AIスクショから隠す（自動）</option>
+          <option value="true">AIスクショから隠す（強制）</option>
+        </select>
+        <span class="hint">ZoomやOBSで全画面共有するときは「弾幕を共有に映す」を使います。</span>
+      </label>
+      <div class="row">
+        <label><input type="checkbox" id="privacyExclusionsEnabled" /> 除外ルールを有効にする</label>
+      </div>
+      <label class="field">
+        除外プロセス名
+        <textarea id="privacyProcessNames" rows="4" spellcheck="false"></textarea>
+      </label>
+      <label class="field">
+        除外タイトル
+        <textarea id="privacyTitlePatterns" rows="4" spellcheck="false"></textarea>
+      </label>
+      <div class="emergency-row">
+        <span>ショートカット <strong id="emergencyShortcut">F9</strong></span>
+        <button id="emergencyStop" type="button">緊急停止</button>
+      </div>
+      <div id="emergencyStatus" class="hint"></div>
+    </section>
+
+    <section class="test-sec">
+      <h2>テスト</h2>
+      <div class="test">
+        <input type="text" id="testText" placeholder="テスト弾幕を入力…" />
+        <button id="testBtn">流す</button>
+      </div>
+    </section>
+
+    <section class="config-sec">
+      <h2>設定ファイル</h2>
+      <div class="config-actions">
+        <button id="exportConfig" type="button">エクスポート</button>
+        <button id="importConfig" type="button">インポート</button>
+        <button id="resetConfig" type="button" class="danger">リセット</button>
+      </div>
+      <div id="configFileStatus" class="hint"></div>
+    </section>
+
+    <section class="diagnostics-sec">
+      <h2>診断</h2>
+      <div class="diagnostics-actions">
+        <button id="runSetupDiagnostics" type="button">セットアップ診断</button>
+        <button id="copyDiagnostics" type="button">診断情報をコピー</button>
+        <button id="exportDiagnostics" type="button" class="ghost">ログに保存</button>
+      </div>
+      <div id="setupDiagnosticsList" class="setup-list"></div>
+      <div id="diagnosticsStatus" class="hint"></div>
+    </section>
+
+    <footer>
+      <div class="status">
+        <span id="dot" class="dot"></span>
+        <span id="statusText">停止中</span>
+        <span id="brainBadge" class="badge">brain: -</span>
+      </div>
+      <p id="ctxInfo" class="hint"></p>
+    </footer>
+  </aside>
+
+  <script src="control.js"></script>
+</body>
+</html>

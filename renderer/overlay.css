@@ -1,0 +1,47 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  /* オーバーレイ全体をクリック透過（保険。main側でも設定済み） */
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.danmaku {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-family: "Yu Gothic UI", "Meiryo", "MS PGothic", system-ui, sans-serif;
+  font-weight: 700;
+  color: #ffffff;
+  /* 黒フチで背景がどんな色でも視認できるように */
+  text-shadow:
+    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 6px rgba(0,0,0,0.6);
+  will-change: transform;
+  /* JS で transform を制御。transition で滑らかに左へ。 */
+}
+
+/* サイズは overlay.js がインラインで拡大設定する。ここでは強調のグロウだけ足す。 */
+.danmaku.big {
+  text-shadow:
+    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+    0 0 12px rgba(255, 220, 80, 0.75);
+}
+
+/* 流入時のふわっと感（最初の数pxだけ） */
+@keyframes pop {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

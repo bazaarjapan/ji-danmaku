@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax:
+    name: Syntax check (node --check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'   # ESM自動判定が効くため import を含む worker も node --check 可能
+
+      - name: node --check on all JS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find . -name '*.js' -not -path './node_modules/*' | sort)
+          if [ ${#files[@]} -eq 0 ]; then echo "No JS files found"; exit 1; fi
+          for f in "${files[@]}"; do
+            echo "check: $f"
+            node --check "$f"
+          done
+          echo "✅ All ${#files[@]} JS files passed node --check"
+
+      - name: Check for merge conflict markers
+        shell: bash
+        run: |
+          if grep -rnE '^(<<<<<<<|>>>>>>>|=======)$' \
+               --include='*.js' --include='*.json' --include='*.html' --include='*.css' \
+               --exclude-dir=node_modules .; then
+            echo "❌ Merge conflict markers found"; exit 1
+          fi
+          echo "✅ No merge conflict markers"
+
+      - name: Run unit tests
+        run: npm test

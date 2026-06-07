@@ -118,3 +118,4 @@ jobs:
             dist/*Setup*.exe
             dist/*Portable*.exe
             dist/*.blockmap
+            dist/latest.yml

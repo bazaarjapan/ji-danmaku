@@ -4,13 +4,13 @@ This project supports free distribution outside the Mac App Store.
 
 ## Release Types
 
-- Development build: unsigned, for local testing and limited distribution.
+- Development build: ad-hoc signed and unnotarized, for local testing and limited distribution.
 - macOS release build: Developer ID signed and notarized.
 - Windows release build: NSIS installer and portable executable. Windows code signing can be added later without changing app logic.
 
-## Unsigned macOS Build Policy
+## Ad-Hoc Signed macOS Build Policy
 
-The current macOS distribution path uses the unsigned development build. This avoids Apple Developer Program costs, but users must manually approve the app on first launch.
+The current macOS distribution path uses an ad-hoc signed development build. This avoids Apple Developer Program costs, but users must manually approve the app on first launch.
 
 Build artifacts:
 
@@ -38,7 +38,8 @@ For development machines only, quarantine can be removed manually:
 xattr -dr com.apple.quarantine /Applications/Ji-Reaction.app
 ```
 
-Do not present unsigned macOS artifacts as notarized or Gatekeeper-approved builds.
+Do not present ad-hoc signed macOS artifacts as notarized or Gatekeeper-approved builds.
+Older fully unsigned artifacts can show `"Ji-Reaction.app" is damaged and can't be opened` when launched with the quarantine attribute. Rebuild with v1.0.5 or newer so the app bundle receives an ad-hoc signature.
 
 ## Required macOS Credentials
 
@@ -93,7 +94,7 @@ npm test
 rg --files -g '*.js' -g '!node_modules/**' | xargs -n 1 node --check
 ```
 
-Build unsigned local artifacts:
+Build ad-hoc signed local artifacts:
 
 ```sh
 npm run dist:win
@@ -125,7 +126,7 @@ For `.github/workflows/release.yml`, configure:
 - `CSC_NAME`: Developer ID identity name
 
 If any of these secrets are missing, the release workflow falls back to the
-unsigned macOS build (`npm run dist:mac`). Treat those artifacts as unsigned
+ad-hoc signed macOS build (`npm run dist:mac`). Treat those artifacts as
 development builds and include the Gatekeeper approval notes in the release.
 
 ## Manual QA Before Publishing

@@ -24,8 +24,8 @@ contextBridge.exposeInMainWorld('ji', {
   sendContext: (c) => ipcRenderer.send('context-cache', c),
 
   // 受信
-  onDanmaku: (cb) => ipcRenderer.on('danmaku', (_e, d) => cb(d)),
-  onClearDanmaku: (cb) => ipcRenderer.on('clear-danmaku', () => cb()),
+  onReactions: (cb) => ipcRenderer.on('reactions', (_e, d) => cb(d)),
+  onClearReactions: (cb) => ipcRenderer.on('clear-reactions', () => cb()),
   onStyle: (cb) => ipcRenderer.on('style', (_e, s) => cb(s)),
   onRunning: (cb) => ipcRenderer.on('running', (_e, r) => cb(r)),
   onEmergencyStop: (cb) => ipcRenderer.on('emergency-stop', (_e, d) => cb(d)),

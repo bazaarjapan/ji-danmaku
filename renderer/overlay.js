@@ -1,8 +1,8 @@
 'use strict';
 
-// ニコニコ動画風 弾幕エンジン。
-// - 右端から左端へ一定時間で流れる（CSS transform / GPU 合成）
-// - レーン(行)管理で重なりを最小化
+// 短文リアクション用の透明オーバーレイ。
+// - CSS transform / GPU 合成で軽量に表示する
+// - 行管理で重なりを抑える
 // - 大型/色付き対応、同時数の上限ガード
 
 const stage = document.getElementById('stage');
@@ -16,7 +16,7 @@ let style = {
 };
 
 let onScreen = 0;
-let lanes = [];          // 各レーンが「次に空く時刻(ms)」（流れる弾幕用）
+let lanes = [];          // 各行が「次に空く時刻(ms)」（移動表示用）
 let ueLanes = [];        // 上固定(ue)コメントの行占有
 let shitaLanes = [];     // 下固定(shita)コメントの行占有
 let laneHeight = 40;
@@ -62,18 +62,18 @@ function rebuildLanes() {
 applyStageBounds();
 window.addEventListener('resize', applyStageBounds);
 
-// 弾幕の幅(おおよそ)から、衝突しないレーンを選ぶ。
-// span: 縦に占有するレーン数（big は背が高いので2レーン分確保して重なりを防ぐ）。
+// 表示要素の幅(おおよそ)から、衝突しない行を選ぶ。
+// span: 縦に占有する行数（big は背が高いので2行分確保して重なりを防ぐ）。
 function pickLane(durationMs, estWidthPx, span = 1) {
   const now = performance.now();
   const screenW = stageWidth();
   const laneSpan = Math.max(1, Math.min(span, lanes.length));
-  // 弾幕が画面右端を完全に抜けるまでの時間 = 後続が同レーンに入れるまでの猶予。
+  // 表示要素が画面端を完全に抜けるまでの時間 = 後続が同じ行に入れるまでの猶予。
   // 速度 = (screenW + width) / duration。先頭が左に width 進めば安全。
   const speed = (screenW + estWidthPx) / durationMs;
   const clearTime = now + estWidthPx / speed + 120; // この時刻まで占有
 
-  // span 連続レーンの「最も早く空くブロック」を上から探す（下端はみ出しはクランプ）。
+  // span 連続行の「最も早く空くブロック」を上から探す（下端はみ出しはクランプ）。
   const maxStart = Math.max(0, lanes.length - laneSpan);
   let best = 0;
   let bestScore = Infinity;       // ブロック内で最も遅い占有終了時刻
@@ -96,7 +96,7 @@ function spawn(comment) {
   const pos = (st.pos === 'ue' || st.pos === 'shita') ? st.pos : null;
 
   const el = document.createElement('div');
-  el.className = 'danmaku'
+  el.className = 'reaction'
     + (big ? ' big' : '') + (small ? ' small' : '') + (pos ? ' fixed' : '');
   el.textContent = comment.text;
 
@@ -121,7 +121,7 @@ function spawn(comment) {
     onScreen--;
   };
 
-  // ニコ動の ue/shita 固定コメント: 画面中央寄せで数秒静止 → フェードアウト。
+  // 固定表示コメント: 画面中央寄せで数秒静止 → フェードアウト。
   if (pos) {
     const rows = pos === 'ue' ? ueLanes : shitaLanes;
     const now = performance.now();
@@ -141,9 +141,9 @@ function spawn(comment) {
     return;
   }
 
-  // 流れる弾幕: 速度は基準 speedMs を中心に少し揺らぐ（生き物感）
+  // 移動表示: 速度は基準 speedMs を中心に少し揺らぐ。
   const duration = style.speedMs * (0.85 + Math.random() * 0.4);
-  // big は背が高いので2レーン確保。予約ブロック内で縦センタリングして重なりを防ぐ。
+  // big は背が高いので2行確保。予約ブロック内で縦センタリングして重なりを防ぐ。
   const span = Math.max(1, Math.min(big ? 2 : 1, lanes.length));
   const lane = pickLane(duration, width, span);
   const blockH = span * laneHeight;
@@ -152,7 +152,7 @@ function spawn(comment) {
   el.style.top = y + 'px';
   el.style.visibility = 'visible';
 
-  // 右端外 → 左端外 へ
+  // 開始位置から終了位置へ移動する。
   const startX = stageWidth();
   const endX = -width - 10;
   el.style.transform = `translate(${startX}px, 0)`;
@@ -170,7 +170,7 @@ function spawn(comment) {
   setTimeout(cleanup, duration + 500);
 }
 
-function clearDanmaku() {
+function clearReactions() {
   for (const child of Array.from(stage.children)) child._done = true;
   stage.replaceChildren();
   onScreen = 0;
@@ -184,9 +184,9 @@ window.ji.onStyle((s) => {
   applyStageBounds();
 });
 
-window.ji.onDanmaku(({ comments }) => {
+window.ji.onReactions(({ comments }) => {
   if (!comments) return;
   for (const c of comments) spawn(c);
 });
 
-window.ji.onClearDanmaku(clearDanmaku);
+window.ji.onClearReactions(clearReactions);

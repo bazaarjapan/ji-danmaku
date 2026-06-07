@@ -21,21 +21,21 @@ npm run dist:mac
 Expected files:
 
 ```text
-dist/Ji-Danmaku-<version>-arm64.dmg
-dist/Ji-Danmaku-<version>-arm64-mac.zip
+dist/Ji-Reaction-<version>-arm64.dmg
+dist/Ji-Reaction-<version>-arm64-mac.zip
 ```
 
 User launch instructions:
 
-1. Copy `Ji-Danmaku.app` to `Applications`.
-2. Right-click `Ji-Danmaku.app` and choose `Open`.
+1. Copy `Ji-Reaction.app` to `Applications`.
+2. Right-click `Ji-Reaction.app` and choose `Open`.
 3. Choose `Open` again in the Gatekeeper warning dialog.
 4. Grant Screen Recording, Microphone, and Accessibility permissions as needed.
 
 For development machines only, quarantine can be removed manually:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Ji-Danmaku.app
+xattr -dr com.apple.quarantine /Applications/Ji-Reaction.app
 ```
 
 Do not present unsigned macOS artifacts as notarized or Gatekeeper-approved builds.
@@ -59,7 +59,7 @@ Developer ID Application: Your Name (TEAMID)
 For local notarization, store Apple notarization credentials in the macOS Keychain:
 
 ```sh
-xcrun notarytool store-credentials "ji-danmaku-notary" \
+xcrun notarytool store-credentials "ji-reaction-notary" \
   --apple-id "apple-id@example.com" \
   --team-id "TEAMID" \
   --password "app-specific-password"
@@ -69,7 +69,7 @@ Then set:
 
 ```sh
 export CSC_NAME="Developer ID Application: Your Name (TEAMID)"
-export APPLE_NOTARY_KEYCHAIN_PROFILE="ji-danmaku-notary"
+export APPLE_NOTARY_KEYCHAIN_PROFILE="ji-reaction-notary"
 ```
 
 For CI, set these environment variables before running a macOS release build:

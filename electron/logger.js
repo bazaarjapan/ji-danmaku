@@ -22,7 +22,7 @@ function fileStamp(date = new Date()) {
 }
 
 function logPath(date = new Date()) {
-  return path.join(LOG_DIR, `ji-danmaku-${todayStamp(date)}.log`);
+  return path.join(LOG_DIR, `ji-reaction-${todayStamp(date)}.log`);
 }
 
 function ensureLogDir(date = new Date()) {
@@ -37,7 +37,7 @@ function ensureLogDir(date = new Date()) {
 function listLogFiles() {
   try {
     return fs.readdirSync(LOG_DIR)
-      .filter((name) => /^ji-danmaku-\d{4}-\d{2}-\d{2}\.log$/.test(name))
+      .filter((name) => /^ji-reaction-\d{4}-\d{2}-\d{2}\.log$/.test(name))
       .sort();
   } catch {
     return [];

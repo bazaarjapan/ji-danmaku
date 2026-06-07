@@ -7,7 +7,7 @@ const codex = require('./codex');
 const mock = require('./mock');
 const logger = require('../logger');
 
-// AI ブレインで弾幕バッチを生成。常に配列を返す（最悪 mock）。
+// AI ブレインでリアクションバッチを生成。常に配列を返す（最悪 mock）。
 async function generateBatch(cfg, { context, transcript, imagePath, recent, count, voiceFocus, voiceOnly }, options = {}) {
   const n = count || cfg.commentsPerBatch || 10;
   const brain = ['codex', 'mock'].includes(cfg.brain) ? cfg.brain : 'codex';

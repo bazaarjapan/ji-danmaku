@@ -4,12 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// 設定ファイルは %APPDATA%/ji-danmaku/config.json （無ければ既定値）
-const CONFIG_DIR = path.join(
-  process.env.APPDATA || path.join(os.homedir(), '.config'),
-  'ji-danmaku'
-);
+const CONFIG_BASE_DIR = process.env.APPDATA || path.join(os.homedir(), '.config');
+// 設定ファイルは %APPDATA%/ji-reaction/config.json （無ければ旧 ji-danmaku 設定または既定値）
+const CONFIG_DIR = path.join(CONFIG_BASE_DIR, 'ji-reaction');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
+const LEGACY_CONFIG_PATHS = [
+  path.join(CONFIG_BASE_DIR, 'ji-danmaku', 'config.json')
+];
 
 const DEFAULTS = {
   // AI ブレイン: 'codex' | 'mock'
@@ -18,43 +19,43 @@ const DEFAULTS = {
   // UIプリセット。'custom' は手動調整状態。
   preset: 'custom',
 
-  // 画面を見て弾幕を生成する間隔(ms)。短いほど反応が良いがコスト/負荷増。
+  // 画面を見てリアクションを生成する間隔(ms)。短いほど反応が良いがコスト/負荷増。
   // Codex応答は数秒〜十数秒で揺れる。生成中は次サイクルを自動スキップする。
   captureIntervalMs: 8000,
 
-  // 1回の生成で受け取る弾幕の最大数（発話への反応時）。
+  // 1回の生成で受け取るリアクションの最大数（発話への反応時）。
   commentsPerBatch: 10,
   // 発話が無く画面だけに反応するときの本数（控えめにして"画面字幕"の出しすぎを防ぐ）。
   commentsPerBatchScreen: 4,
 
   // 声 ↔ 画面 の反応バランス(0-100)。
-  // 100 = 声だけに反応(画面のみの弾幕は出さない) / 0 = 画面だけに反応(声は無視) / 中間はブレンド。
+  // 100 = 声だけに反応(画面のみのリアクションは出さない) / 0 = 画面だけに反応(声は無視) / 中間はブレンド。
   voiceReactivity: 70,
-  // 弾幕の雰囲気: balanced/gentle/tsukkomi/kusa/live/polite/calm
+  // リアクションの雰囲気: balanced/gentle/tsukkomi/kusa/live/polite/calm
   commentTone: 'balanced',
 
-  // NGワード/コメントフィルタ: 不適切語を含む弾幕を除外/伏字化する（AI・mock両方に適用）。
-  ngMode: 'drop',         // 'drop' = 該当弾幕を除外 / 'mask' = 該当語を〇で伏字化
+  // NGワード/コメントフィルタ: 不適切語を含むリアクションを除外/伏字化する（AI・mock両方に適用）。
+  ngMode: 'drop',         // 'drop' = 該当リアクションを除外 / 'mask' = 該当語を〇で伏字化
   ngWords: ['死ね', '殺す', 'ぶっ殺', '消えろ', 'クズ', 'カス', 'ブス', 'デブ', 'キモい', 'ウザい', '黙れ'],
 
-  // フィラー弾幕(アンビエント/発話ざわめき)を追加するか。
-  // false にすると AI が生成した弾幕だけを流す（www/草/888 等の自動フィラーは出さない）。
+  // フィラーリアクション(アンビエント/発話ざわめき)を追加するか。
+  // false にすると AI が生成したリアクションだけを表示する（www/草/888 等の自動フィラーは出さない）。
   ambientEnabled: false,
-  // アンビエント(自動)弾幕: AI が無くても常に賑わいを出す。0で無効。
+  // アンビエント(自動)リアクション: AI が無くても常に賑わいを出す。0で無効。
   // 1分あたりのおおよその自動コメント数。
   ambientPerMinute: 40,
 
-  // マルチモニター: true で全ディスプレイに弾幕オーバーレイを表示。false でプライマリのみ。
+  // マルチモニター: true で全ディスプレイにオーバーレイを表示。false でプライマリのみ。
   multiMonitor: true,
   // AIに見せる(キャプチャする)ディスプレイ。screen.getAllDisplays() のインデックス。
   // null または範囲外でプライマリ。
   captureDisplayIndex: null,
 
-  // オーバーレイ弾幕をキャプチャから除外するか（自分の弾幕がスクショ/署名に写り込むのを防ぐ）。
+  // オーバーレイをキャプチャから除外するか（自分の表示がスクショ/署名に写り込むのを防ぐ）。
   // 'auto': Windows 10 build 19041(version 2004)以降でのみ有効化。古いWindows10では
   //         setContentProtection が「真っ黒」描画になりキャプチャを潰すため auto で自動回避。
   // true: 常に有効 / false: 常に無効。
-  // 共有用途では Zoom/OBS からも除外されて弾幕が映らないため、既定は共有互換にする。
+  // 共有用途では Zoom/OBS からも除外されてオーバーレイが映らないため、既定は共有互換にする。
   overlayContentProtection: false,
 
   // プライバシー除外: 一致する前面ウィンドウではスクリーンショットもAI生成も止める。
@@ -66,7 +67,7 @@ const DEFAULTS = {
     titlePatterns: ['password', 'パスワード', 'secret', 'ログイン', 'サインイン', '認証', '2FA']
   },
 
-  // すぐに弾幕・キャプチャ・マイク監視を止める緊急停止キー。
+  // すぐにリアクション・キャプチャ・マイク監視を止める緊急停止キー。
   emergencyStopShortcut: 'F9',
 
   // アイドル検知: 画面が変化せず発話も無いときAI生成をスキップしてコストを抑える。
@@ -76,7 +77,7 @@ const DEFAULTS = {
   // 「変化なし」がこの回数連続したらAI生成をスキップ(アンビエントは継続)。
   idleSkipAfter: 1,
 
-  // マイク監視: 喋ると弾幕がドッと増える「爽快感」担当。
+  // マイク監視: 喋るとリアクションが増える「反応感」担当。
   micEnabled: true,
   // 空文字ならOS既定の入力デバイス。値がある場合は getUserMedia の deviceId として使う。
   micDeviceId: '',
@@ -106,12 +107,12 @@ const DEFAULTS = {
   // 区切りが来ない長い発話を強制的に切る上限(ms)。長文を途中で刻みすぎないよう長め。
   sttMaxMs: 20000,
 
-  // 弾幕の見た目
+  // リアクションの見た目
   fontSize: 30,           // 基準フォントサイズ(px)
   speedMs: 8000,          // 画面端から端まで流れる時間(ms)。小さいほど速い。
-  opacity: 0.92,          // 弾幕の不透明度
+  opacity: 0.92,          // オーバーレイ文字の不透明度
   maxOnScreen: 120,       // 同時表示の上限（負荷ガード）
-  // 弾幕を流してよい画面範囲の余白(px)。字幕欄、ゲームUI、通知領域を避けるために使う。
+  // リアクションを表示してよい画面範囲の余白(px)。字幕欄、ゲームUI、通知領域を避けるために使う。
   safeZone: {
     top: 0,
     right: 0,
@@ -228,12 +229,13 @@ function normalizeConfig(cfg) {
 }
 
 function load() {
-  try {
-    const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-    return normalizeConfig(deepMerge(DEFAULTS, JSON.parse(raw)));
-  } catch {
-    return { ...DEFAULTS };
+  for (const configPath of [CONFIG_PATH, ...LEGACY_CONFIG_PATHS]) {
+    try {
+      const raw = fs.readFileSync(configPath, 'utf8');
+      return normalizeConfig(deepMerge(DEFAULTS, JSON.parse(raw)));
+    } catch {}
   }
+  return defaultConfig();
 }
 
 function save(cfg) {
@@ -251,6 +253,7 @@ module.exports = {
   DEFAULTS,
   CONFIG_DIR,
   CONFIG_PATH,
+  LEGACY_CONFIG_PATHS,
   load,
   save,
   deepMerge,

@@ -9,7 +9,7 @@
 //    API 従量課金のような【追加料金は発生しない】。
 //  - 1回の生成ごとに ephemeral スレッドを作って turn を1回回すだけ。
 //    履歴を溜めない＝毎回の入力トークンを最小に保ち、コストを抑える。
-//  - スクリーンショットは localImage 入力として渡し、画面を見て弾幕を生成させる。
+//  - スクリーンショットは localImage 入力として渡し、画面を見て短いリアクションを生成させる。
 //  - effort=low で低レイテンシ・低コスト。
 
 const { spawn } = require('child_process');
@@ -59,8 +59,8 @@ function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly
 
   return [
     'あなたはライブ配信を【今まさに見ている大勢の匿名視聴者】です。',
-    'ニコニコ動画のように流れる短い弾幕コメントを、いろんな視聴者がリアルタイムに',
-    '書き込んでいる体で生成してください。',
+    '短い画面リアクションを、複数の参加者がリアルタイムに',
+    '反応している体で生成してください。特定サービスの表示様式は模倣しないでください。',
     '',
     ...focus,
     '',
@@ -72,14 +72,14 @@ function buildPrompt({ count, context, transcript, recent, voiceFocus, voiceOnly
     '  軽いイジり / ネットスラング(w・草・888・kawaii)',
     '- 同じ語の連発を避け、大勢が見ている多様さを出す',
     '- 煽り/誹謗中傷/不適切表現はNG。明るく楽しいノリ',
-    '- たまに color(例 "#ff5b5b")/big:true/small:true/pos:"ue"・"shita" で変化を付ける(各1割以内)',
+    '- たまに color(例 "#ff5b5b")/big:true/small:true で変化を付ける(各1割以内)',
     '',
     // 声100%(voiceOnly)では画面文脈(前面アプリ名)も渡さない。
     ...(voiceOnly ? [] : [ctxLine]),
     ...(avoidLine ? [avoidLine] : []),
     '',
     'ツールやコマンドは一切使わず、最終メッセージで以下の形の JSON だけを返す:',
-    '{"comments":[{"text":"わかるw"},{"text":"それなww"},{"text":"888","color":"#ffe14d"},{"text":"ここ好き","pos":"ue"}]}'
+    '{"comments":[{"text":"わかるw"},{"text":"それなww"},{"text":"888","color":"#ffe14d"},{"text":"ここ好き"}]}'
   ].join('\n');
 }
 
@@ -167,7 +167,7 @@ class AppServer {
     // ハンドシェイク: initialize → initialized
     this.ready = (async () => {
       await this._request('initialize', {
-        clientInfo: { name: 'ji-danmaku', title: 'Ji-Danmaku', version: '0.1.0' },
+        clientInfo: { name: 'ji-reaction-overlay', title: 'Ji-Reaction', version: '0.1.0' },
         capabilities: { experimentalApi: true, requestAttestation: false }
       }, requestTimeoutMs(timeoutMs));
       this._notify('initialized');
@@ -199,7 +199,7 @@ class AppServer {
       }
       return;
     }
-    // サーバ発のリクエスト(承認要求など)。弾幕用途では使わないので一律拒否して握りつぶす。
+    // サーバ発のリクエスト(承認要求など)。リアクション用途では使わないので一律拒否して握りつぶす。
     if (m.id !== undefined && m.method) {
       this._send({ id: m.id, error: { code: -32601, message: 'not supported' } });
       return;
@@ -443,7 +443,7 @@ function noteFailure(maxFailures, backoffMs) {
   if (maxFailures && consecutiveFails >= maxFailures) {
     backoffUntil = Date.now() + (backoffMs || 30000);
     consecutiveFails = 0;
-    console.error(`[codex] ${maxFailures}回連続失敗 → ${Math.round((backoffMs || 30000) / 1000)}秒バックオフ。その間はmock弾幕で継続します。`);
+    console.error(`[codex] ${maxFailures}回連続失敗 → ${Math.round((backoffMs || 30000) / 1000)}秒バックオフ。その間はmockリアクションで継続します。`);
   }
 }
 
@@ -482,7 +482,7 @@ function warnOnce(msg) {
   if (warned) return;
   warned = true;
   console.error('[codex/app-server] 生成失敗(初回のみ表示):', String(msg).slice(0, 200),
-    '\n  -> `codex login` 済みか確認してください。mock弾幕で継続します。');
+    '\n  -> `codex login` 済みか確認してください。mockリアクションで継続します。');
 }
 
 // アプリ終了時にサーバを落とすためのフック。

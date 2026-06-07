@@ -30,7 +30,7 @@ function screenPermissionItem(status) {
     label: 'macOS 画面収録',
     status: status === 'not-determined' ? 'warn' : 'error',
     message: `画面収録: ${labelForMediaStatus(status)}`,
-    action: 'システム設定 > プライバシーとセキュリティ > 画面収録で Ji-Danmaku を許可してください'
+    action: 'システム設定 > プライバシーとセキュリティ > 画面収録で Ji-Reaction を許可してください'
   };
 }
 
@@ -58,7 +58,7 @@ function microphonePermissionItem(status, enabled) {
     label: 'macOS マイク',
     status: 'warn',
     message: `マイク: ${labelForMediaStatus(status)}`,
-    action: '音声反応を使う場合は、システム設定 > プライバシーとセキュリティ > マイクで Ji-Danmaku を許可してください'
+    action: '音声反応を使う場合は、システム設定 > プライバシーとセキュリティ > マイクで Ji-Reaction を許可してください'
   };
 }
 
@@ -77,7 +77,7 @@ function accessibilityPermissionItem(trusted) {
     label: 'macOS アクセシビリティ',
     status: 'warn',
     message: '前面アプリ名やウィンドウ名を取得できない可能性があります',
-    action: 'アプリ文脈とプライバシー除外を安定させるには、システム設定 > プライバシーとセキュリティ > アクセシビリティで Ji-Danmaku を許可してください'
+    action: 'アプリ文脈とプライバシー除外を安定させるには、システム設定 > プライバシーとセキュリティ > アクセシビリティで Ji-Reaction を許可してください'
   };
 }
 

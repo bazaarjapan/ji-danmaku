@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, dialog, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, dialog, systemPreferences, shell } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -1175,6 +1175,36 @@ async function runSetupDiagnostics() {
   });
   return { status, checks, updatedAt };
 }
+
+function getMacSetupState() {
+  if (process.platform !== 'darwin') {
+    return { platform: process.platform, status: 'ok', checks: [], updatedAt: Date.now() };
+  }
+  const checks = checkMacPermissionsSetup();
+  return {
+    platform: 'darwin',
+    status: summarizeSetupStatus(checks),
+    checks,
+    updatedAt: Date.now()
+  };
+}
+
+const MAC_PRIVACY_URLS = {
+  screen: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+  microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+  privacy: 'x-apple.systempreferences:com.apple.preference.security?Privacy'
+};
+
+ipcMain.handle('get-mac-setup-state', () => getMacSetupState());
+ipcMain.handle('open-mac-privacy', async (_event, pane = 'privacy') => {
+  if (process.platform !== 'darwin') {
+    return { opened: false, reason: 'not-macos' };
+  }
+  const url = MAC_PRIVACY_URLS[pane] || MAC_PRIVACY_URLS.privacy;
+  await shell.openExternal(url);
+  return { opened: true, pane };
+});
 
 function normalizeConfigPatch(patch) {
   const nextPatch = { ...(patch || {}) };

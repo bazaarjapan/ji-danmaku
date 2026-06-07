@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('ji', {
   testComment: (text) => ipcRenderer.invoke('test-comment', text),
   getRuntimeDiagnostics: () => ipcRenderer.invoke('get-runtime-diagnostics'),
   runSetupDiagnostics: () => ipcRenderer.invoke('run-setup-diagnostics'),
+  getMacSetupState: () => ipcRenderer.invoke('get-mac-setup-state'),
+  openMacPrivacy: (pane) => ipcRenderer.invoke('open-mac-privacy', pane),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
   exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
 

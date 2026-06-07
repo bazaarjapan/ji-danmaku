@@ -12,6 +12,23 @@
   </header>
 
   <section class="main-toggle">
+    <div id="macSetupBanner" class="mac-setup-banner hidden" aria-live="polite">
+      <div class="mac-setup-head">
+        <div>
+          <span class="eyebrow">macOS セットアップ</span>
+          <strong id="macSetupTitle">確認が必要です</strong>
+        </div>
+        <button id="macSetupDismiss" class="icon-btn" type="button" title="閉じる" aria-label="セットアップ案内を閉じる">×</button>
+      </div>
+      <div id="macSetupChecks" class="mac-setup-checks"></div>
+      <div class="mac-setup-actions">
+        <button id="macSetupRun" type="button">診断する</button>
+        <button id="macOpenScreen" type="button" class="ghost">画面収録</button>
+        <button id="macOpenMic" type="button" class="ghost">マイク</button>
+        <button id="macOpenAccessibility" type="button" class="ghost">アクセシビリティ</button>
+      </div>
+    </div>
+
     <div class="live-console" aria-live="polite">
       <div class="console-head">
         <div>

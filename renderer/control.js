@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_WHISPER_MODEL = 'Xenova/whisper-base';
 const DEFAULT_NG_WORDS = ['死ね', '殺す', 'ぶっ殺', '消えろ', 'クズ', 'カス', 'ブス', 'デブ', 'キモい', 'ウザい', '黙れ'];
 const PLATFORM_VALUE = String(navigator.platform || '').toLowerCase();
+const IS_MACOS = PLATFORM_VALUE.includes('mac');
 const PLATFORM_LABEL = PLATFORM_VALUE.includes('mac') ? 'macOS' : (PLATFORM_VALUE.includes('win') ? 'Windows' : 'OS');
 const MIC_UTILS = window.JiMicUtils || {};
 const PRESETS = {
@@ -121,6 +122,7 @@ async function init() {
   });
   window.ji.onDiagnostics(updateDiagnosticsPanel);
   updateDiagnosticsPanel(await window.ji.getRuntimeDiagnostics());
+  refreshMacSetupBanner();
 }
 
 function reflectConfig() {
@@ -347,6 +349,18 @@ function bindControls() {
   $('copyDiagnostics').addEventListener('click', copyDiagnostics);
   $('exportDiagnostics').addEventListener('click', exportDiagnostics);
   $('runSetupDiagnostics').addEventListener('click', runSetupDiagnostics);
+  $('macSetupRun').addEventListener('click', async () => {
+    setSettingsOpen(true);
+    await runSetupDiagnostics();
+    refreshMacSetupBanner();
+  });
+  $('macSetupDismiss').addEventListener('click', () => {
+    macSetupDismissed = true;
+    show('macSetupBanner', false);
+  });
+  $('macOpenScreen').addEventListener('click', () => openMacPrivacyPane('screen'));
+  $('macOpenMic').addEventListener('click', () => openMacPrivacyPane('microphone'));
+  $('macOpenAccessibility').addEventListener('click', () => openMacPrivacyPane('accessibility'));
   $('exportConfig').addEventListener('click', exportConfigFile);
   $('importConfig').addEventListener('click', importConfigFile);
   $('resetConfig').addEventListener('click', resetConfigDefaults);
@@ -782,6 +796,66 @@ function setPrivacyNotice(showNotice, text = '') {
   el.textContent = showNotice ? text : '';
 }
 
+let macSetupDismissed = false;
+
+function shortMacPermissionLabel(label) {
+  return String(label || '')
+    .replace(/^macOS\s*/, '')
+    .replace('画面収録', '画面')
+    .replace('アクセシビリティ', '操作補助');
+}
+
+function renderMacSetupBanner(state) {
+  const banner = $('macSetupBanner');
+  const list = $('macSetupChecks');
+  if (!banner || !list) return;
+  const checks = state && Array.isArray(state.checks) ? state.checks : [];
+  const shouldShow = IS_MACOS && !macSetupDismissed && checks.some((check) => check.status !== 'ok');
+  show('macSetupBanner', shouldShow);
+  if (!shouldShow) return;
+
+  const status = summarizeSetupStatus(checks);
+  $('macSetupTitle').textContent = status === 'error'
+    ? '起動前に必要な権限があります'
+    : '音声・画面反応の準備を確認してください';
+
+  list.innerHTML = '';
+  for (const check of checks) {
+    const chip = document.createElement('div');
+    chip.className = 'mac-setup-chip';
+    chip.dataset.status = check.status || 'idle';
+    const title = document.createElement('strong');
+    title.textContent = `${statusLabel(check.status)} · ${shortMacPermissionLabel(check.label)}`;
+    const message = document.createElement('span');
+    message.textContent = check.message || '';
+    chip.appendChild(title);
+    chip.appendChild(message);
+    list.appendChild(chip);
+  }
+}
+
+async function refreshMacSetupBanner() {
+  if (!IS_MACOS || !window.ji.getMacSetupState) {
+    show('macSetupBanner', false);
+    return;
+  }
+  try {
+    renderMacSetupBanner(await window.ji.getMacSetupState());
+  } catch {
+    show('macSetupBanner', false);
+  }
+}
+
+async function openMacPrivacyPane(pane) {
+  if (!window.ji.openMacPrivacy) return;
+  try {
+    await window.ji.openMacPrivacy(pane);
+    setDiagnosticsStatus('システム設定を開きました。許可後にセットアップ診断を実行してください', 'warn');
+  } catch (e) {
+    setDiagnosticsStatus(e.message || 'システム設定を開けませんでした', 'warn');
+  }
+}
+
 function setupItem(id, label, status, message, action = '') {
   return { id, label, status, message, action };
 }
@@ -890,6 +964,7 @@ async function runSetupDiagnostics() {
     renderSetupDiagnostics(result);
     updateDiagnosticsPanel({ setup: result });
     setDiagnosticsStatus(status === 'ok' ? 'セットアップ診断OK' : 'セットアップ診断に確認項目があります', status === 'error' ? 'warn' : (status === 'warn' ? 'warn' : 'ok'));
+    refreshMacSetupBanner();
   } catch (e) {
     renderSetupDiagnostics({ checks: [setupItem('diagnostics', '診断', 'error', e.message || '診断に失敗しました')] });
     setDiagnosticsStatus(e.message || 'セットアップ診断に失敗しました', 'warn');

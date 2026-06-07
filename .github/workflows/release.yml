@@ -10,7 +10,7 @@ on:
 
 jobs:
   mac:
-    name: macOS signed release
+    name: macOS release
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,32 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Determine macOS signing mode
+        id: signing
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          CSC_NAME: ${{ secrets.CSC_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MACOS_CERTIFICATE" ] && \
+             [ -n "$MACOS_CERTIFICATE_PASSWORD" ] && \
+             [ -n "$KEYCHAIN_PASSWORD" ] && \
+             [ -n "$CSC_NAME" ] && \
+             [ -n "$APPLE_ID" ] && \
+             [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && \
+             [ -n "$APPLE_TEAM_ID" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Import Developer ID certificate
+        if: steps.signing.outputs.signed == 'true'
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -43,12 +68,17 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
 
       - name: Build signed and notarized macOS artifacts
+        if: steps.signing.outputs.signed == 'true'
         env:
           CSC_NAME: ${{ secrets.CSC_NAME }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run dist:mac:release
+
+      - name: Build unsigned macOS artifacts
+        if: steps.signing.outputs.signed != 'true'
+        run: npm run dist:mac
 
       - uses: actions/upload-artifact@v4
         with:

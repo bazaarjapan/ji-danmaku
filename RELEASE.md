@@ -124,6 +124,10 @@ For `.github/workflows/release.yml`, configure:
 - `APPLE_TEAM_ID`: Apple Developer Team ID
 - `CSC_NAME`: Developer ID identity name
 
+If any of these secrets are missing, the release workflow falls back to the
+unsigned macOS build (`npm run dist:mac`). Treat those artifacts as unsigned
+development builds and include the Gatekeeper approval notes in the release.
+
 ## Manual QA Before Publishing
 
 - macOS: install from DMG, launch, pass Gatekeeper, grant Screen Recording and Microphone permissions.

@@ -1,7 +1,7 @@
 {
-  "name": "ji-danmaku",
+  "name": "ji-reaction-overlay",
   "version": "1.0.4",
-  "description": "ニコニコ動画風の弾幕をデスクトップ全面にオーバーレイ表示するアプリ。画面とマイクを監視し、Codex をブレインにして視聴者コメント(弾幕)をリアルタイム生成する。",
+  "description": "画面とマイクに反応する短いAIリアクションを、透明なデスクトップ補助オーバーレイに表示するElectronアプリ。",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
@@ -17,8 +17,8 @@
   "author": "",
   "license": "MIT",
   "build": {
-    "appId": "com.bazaarjapan.ji-danmaku",
-    "productName": "Ji-Danmaku",
+    "appId": "com.bazaarjapan.ji-reaction",
+    "productName": "Ji-Reaction",
     "asar": false,
     "afterPack": "scripts/after-pack.js",
     "files": [
@@ -66,8 +66,8 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Ji-Danmaku uses microphone input to generate voice-reactive danmaku comments.",
-        "NSScreenCaptureDescription": "Ji-Danmaku captures the screen to generate context-aware danmaku comments."
+        "NSMicrophoneUsageDescription": "Ji-Reaction uses microphone input to generate voice-reactive overlay reactions.",
+        "NSScreenCaptureDescription": "Ji-Reaction captures the screen to generate context-aware overlay reactions."
       }
     },
     "dmg": {

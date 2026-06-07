@@ -1,7 +1,7 @@
 // ローカル Whisper (Transformers.js / onnxruntime-web WASM) を回す Web Worker。
 //
 // 方針:
-//  - 推論はこの Worker 内だけで完結 → UIスレッド(コントロール画面)も弾幕も固まらない。
+//  - 推論はこの Worker 内だけで完結 → UIスレッド(コントロール画面)もオーバーレイも固まらない。
 //  - WASM ランタイムは【ローカルの node_modules】から読む → 起動ごとのCDN取得が不要。
 //  - モデルは初回だけ HuggingFace からDLし、ブラウザキャッシュに保存 → 2回目以降はオフライン・無料。
 //  - 追加の従量課金は一切なし(全部このPCのCPUで動く)。

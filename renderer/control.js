@@ -108,8 +108,8 @@ async function init() {
     if (s.idle !== undefined && running && !s.privacyExcluded) {
       $('statusText').textContent = s.idle
         ? '💤 アイドル（画面変化なし → 生成スキップ中・節約）'
-        : '配信中（弾幕が流れています）';
-      $('mainStatusText').textContent = s.idle ? 'アイドル節約中' : '弾幕稼働中';
+        : 'リアクション表示中';
+      $('mainStatusText').textContent = s.idle ? 'アイドル節約中' : 'リアクション稼働中';
     }
     if (s.lastContext) {
       const c = s.lastContext;
@@ -694,7 +694,7 @@ function renderDiagnosticsPanel() {
 }
 
 function setMainRunStatus(isRunning) {
-  $('mainStatusText').textContent = isRunning ? '弾幕稼働中' : '停止中';
+  $('mainStatusText').textContent = isRunning ? 'リアクション稼働中' : '停止中';
   const badge = $('mainModeBadge');
   badge.textContent = isRunning ? 'LIVE' : 'STANDBY';
   badge.classList.toggle('live', isRunning);
@@ -997,10 +997,10 @@ function setRunning(r) {
   btn.classList.toggle('on', r);
   btn.classList.toggle('off', !r);
   btn.innerHTML = r
-    ? '■ 字弾幕ストップ'
-    : '▶ 字弾幕スタート';
+    ? '■ リアクション停止'
+    : '▶ リアクション開始';
   $('dot').classList.toggle('live', r);
-  $('statusText').textContent = r ? '配信中（弾幕が流れています）' : '停止中';
+  $('statusText').textContent = r ? 'リアクション表示中' : '停止中';
   if (!r) setPrivacyNotice(false);
   if (r && $('micEnabled').checked) startMic();
   else stopMic();
@@ -1152,7 +1152,7 @@ function updateMicNoiseHint(level, threshold) {
 
 async function calibrateMic() {
   if (!micStream) {
-    setCalibrationStatus('字弾幕スタート後、静かな状態で実行してください', 'warn');
+    setCalibrationStatus('リアクション開始後、静かな状態で実行してください', 'warn');
     return;
   }
   calibrationActive = true;

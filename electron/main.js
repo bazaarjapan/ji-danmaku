@@ -54,13 +54,13 @@ function publicConfig() {
   return { ...out, defaultNgWords: configStore.DEFAULTS.ngWords };
 }
 
-let running = false;          // 弾幕配信ON/OFF
+let running = false;          // リアクション表示ON/OFF
 let captureTimer = null;      // AI生成ループ
-let ambientTimer = null;      // アンビエント弾幕ループ
+let ambientTimer = null;      // アンビエントリアクションループ
 let micState = { level: 0, speaking: false, transcript: '' };
 let transcriptLog = [];    // 直近の発話ログ { text, at }（話題追従の文脈用）
 let lastBatchAt = 0;       // 直近の生成サイクル開始時刻（反応トリガのデバウンス用）
-let lastAiCommentAt = 0;   // 直近にAI弾幕を画面へ流した時刻（アンビエント抑制用）
+let lastAiCommentAt = 0;   // 直近にAIリアクションを画面へ表示した時刻（アンビエント抑制用）
 let lastPrivacyKey = '';   // 除外ログの連続出力を抑える
 let runtimeDiagnostics = {
   ai: {
@@ -137,25 +137,25 @@ function createOverlayForDisplay(display) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      // 他アプリの裏/最小化でも弾幕アニメを止めない（Chromiumの背景スロットリング無効化）。
+      // 他アプリの裏/最小化でもオーバーレイアニメーションを止めない（Chromiumの背景スロットリング無効化）。
       backgroundThrottling: false
     }
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // クリック透過: 弾幕は完全に「上を流れるだけ」で操作を邪魔しない。
+  // クリック透過: オーバーレイは操作を邪魔しない。
   win.setIgnoreMouseEvents(true, { forward: true });
-  // 自分が流した弾幕を画面キャプチャから除外する（Windows: WDA_EXCLUDEFROMCAPTURE）。
-  // これにより (1) アイドル検知の画面署名が自分の弾幕の動きで汚れない、
-  //          (2) AIブレインへ渡すスクショに自分の弾幕が写り込まず、実画面だけに反応できる。
-  // ユーザーの目には弾幕は通常どおり表示される（キャプチャ系ツールにのみ非表示）。
+  // 自分が表示したオーバーレイを画面キャプチャから除外する（Windows: WDA_EXCLUDEFROMCAPTURE）。
+  // これにより (1) アイドル検知の画面署名が自分の表示で汚れない、
+  //          (2) AIブレインへ渡すスクショに自分のリアクションが写り込まず、実画面だけに反応できる。
+  // ユーザーの目にはオーバーレイは通常どおり表示される（キャプチャ系ツールにのみ非表示）。
   // ただし Windows 10 build 19041 未満では「除外」ではなく「真っ黒」描画になり、
   // フルスクリーンのオーバーレイだとキャプチャ全体を潰してしまうため自動で無効化する。
   if (shouldExcludeFromCapture()) {
     win.setContentProtection(true);
   } else {
-    console.log('[overlay] content protection をスキップ（古いWindowsビルド）。弾幕がキャプチャに写る可能性があります。');
+    console.log('[overlay] content protection をスキップ（古いWindowsビルド）。オーバーレイがキャプチャに写る可能性があります。');
   }
   win.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
   win.webContents.once('did-finish-load', () => {
@@ -201,7 +201,7 @@ function createControl() {
     height: 780,
     minWidth: 420,
     minHeight: 720,
-    title: 'Ji-Danmaku コントロール',
+    title: 'Ji-Reaction コントロール',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -211,7 +211,7 @@ function createControl() {
       // 読み込まない(リモート/未知のコンテンツは一切開かない)ため安全。
       webSecurity: false,
       // 最小化/裏に回ってもマイク監視・発話検知(rAFループ)を止めない。
-      // これが無いとコントロール画面が隠れた途端に声反応の弾幕が止まる。
+      // これが無いとコントロール画面が隠れた途端に声反応のオーバーレイが止まる。
       backgroundThrottling: false
     }
   });
@@ -352,7 +352,7 @@ function createTrayImage() {
 function createTray() {
   if (tray) return;
   tray = new Tray(createTrayImage());
-  tray.setToolTip('Ji-Danmaku');
+  tray.setToolTip('Ji-Reaction');
   tray.on('click', summonControl);
   updateTrayMenu();
 }
@@ -366,7 +366,7 @@ function updateTrayMenu() {
   const template = [
     { label: 'コントロールを表示', click: summonControl },
     {
-      label: running ? '弾幕を停止' : '弾幕を開始',
+      label: running ? 'リアクションを停止' : 'リアクションを開始',
       click: toggleRunning
     },
     { label: '緊急停止', enabled: running, click: () => emergencyStop('tray') },
@@ -383,19 +383,19 @@ function updateApplicationMenu() {
   const emergencyShortcut = cfg.emergencyStopShortcut || 'F9';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
-      label: 'Ji-Danmaku',
+      label: 'Ji-Reaction',
       submenu: [
-        { role: 'about', label: 'Ji-Danmaku について' },
+        { role: 'about', label: 'Ji-Reaction について' },
         { type: 'separator' },
         { label: 'コントロールを表示', accelerator: 'F7', click: summonControl },
-        { label: running ? '弾幕を停止' : '弾幕を開始', accelerator: 'F8', click: toggleRunning },
+        { label: running ? 'リアクションを停止' : 'リアクションを開始', accelerator: 'F8', click: toggleRunning },
         { label: '緊急停止', accelerator: emergencyShortcut, enabled: running, click: () => emergencyStop('menu') },
         { type: 'separator' },
-        { role: 'hide', label: 'Ji-Danmaku を隠す' },
+        { role: 'hide', label: 'Ji-Reaction を隠す' },
         { role: 'hideOthers', label: 'ほかを隠す' },
         { role: 'unhide', label: 'すべて表示' },
         { type: 'separator' },
-        { label: 'Ji-Danmaku を終了', accelerator: 'Command+Q', click: quitFromTray }
+        { label: 'Ji-Reaction を終了', accelerator: 'Command+Q', click: quitFromTray }
       ]
     },
     { role: 'editMenu', label: '編集' },
@@ -411,10 +411,10 @@ function updateDockMenu() {
     app.dock.setBadge(running ? 'ON' : '');
     app.dock.setMenu(Menu.buildFromTemplate([
       { label: 'コントロールを表示', click: summonControl },
-      { label: running ? '弾幕を停止' : '弾幕を開始', click: toggleRunning },
+      { label: running ? 'リアクションを停止' : 'リアクションを開始', click: toggleRunning },
       { label: '緊急停止', enabled: running, click: () => emergencyStop('dock') },
       { type: 'separator' },
-      { label: 'Ji-Danmaku を終了', click: quitFromTray }
+      { label: 'Ji-Reaction を終了', click: quitFromTray }
     ]));
   } catch {}
 }
@@ -428,7 +428,7 @@ function quitFromTray() {
   app.quit();
 }
 
-// ---- 弾幕送出 ----------------------------------------------------------
+// ---- リアクション送出 --------------------------------------------------
 
 // AIコメントの重複抑制用: 直近に流したテキストをローリング保持する。
 // アンビエント/発話ざわめき(www/草/888)は"群衆らしい繰り返し"なので対象外。
@@ -448,8 +448,8 @@ function recentAiTexts(limit = 12) {
   return recentAi.filter((r) => now - r.at < RECENT_AI_TTL).slice(-limit).map((r) => r.text);
 }
 
-// 色未指定の弾幕に、内容キーワード連動のアクセント色を控えめ(約45%)に付与する。
-// 既に色/テスト弾幕は触らない。基本は白多数でうるさくしない。
+// 色未指定のリアクションに、内容キーワード連動のアクセント色を控えめ(約45%)に付与する。
+// 既に色/テストリアクションは触らない。基本は白多数でうるさくしない。
 function applyAccents(comments) {
   return comments.map((c) => {
     const st = c.style || {};
@@ -460,8 +460,8 @@ function applyAccents(comments) {
   });
 }
 
-// NGワードフィルタ: 不適切語を含む弾幕を除外(drop)または伏字化(mask)。
-// 全弾幕(AI/ambient/voice/test)が通る sendComments で適用し、漏れをなくす。
+// NGワードフィルタ: 不適切語を含むリアクションを除外(drop)または伏字化(mask)。
+// 全リアクション(AI/ambient/voice/test)が通る sendComments で適用し、漏れをなくす。
 function filterNg(comments) {
   return filterNgComments(comments, cfg);
 }
@@ -483,8 +483,8 @@ function sendComments(comments, source) {
   list = filterNg(list);
   if (!list.length) return;
   if (source !== 'test') list = applyAccents(list);
-  // 重複抑制・フィルタは1回だけ実行し、同じ弾幕を全モニターに流す。
-  broadcastOverlay('danmaku', { comments: list, source });
+  // 重複抑制・フィルタは1回だけ実行し、同じリアクションを全モニターに表示する。
+  broadcastOverlay('reactions', { comments: list, source });
 }
 
 function overlayStylePayload() {
@@ -713,7 +713,7 @@ async function captureCycle() {
     if (!changed && !speaking) {
       idleStreak++;
       if (idleStreak >= (cfg.idleSkipAfter ?? 1)) {
-        // 生成はスキップ。アンビエント弾幕は別ループで継続するので「無人」にはならない。
+        // 生成はスキップ。アンビエントリアクションは別ループで継続するので「無人」にはならない。
         updateRuntimeDiagnostics({
           ai: {
             status: 'idle',
@@ -755,7 +755,7 @@ async function captureCycle() {
     } else {
       count = Math.round((cfg.commentsPerBatchScreen ?? 4) * (100 - vr) / 100);
       if (count < 1) {
-        // 声100%(画面弾幕なし)設定で発話も無い → 今回は生成しない。
+        // 声100%(画面リアクションなし)設定で発話も無い → 今回は生成しない。
         updateRuntimeDiagnostics({
           ai: {
             status: 'idle',
@@ -785,7 +785,7 @@ async function captureCycle() {
     const generationStartedAt = Date.now();
     const { source, comments, requestedBrain, fallbackFrom, error } = await generateBatchWithWatchdog({ context, transcript, imagePath: imageForGen, recent, count, voiceFocus, voiceOnly });
     generationMs = Date.now() - generationStartedAt;
-    // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったり弾幕が出るのを防ぐ）。
+    // 生成中に停止された場合は結果を破棄（停止後にUIが「配信中」へ戻ったりリアクションが出るのを防ぐ）。
     if (cycleCancelled(cycleToken)) return;
     let imageBytes = 0;
     try {
@@ -828,11 +828,11 @@ function ambientTick() {
   const per = cfg.ambientPerMinute || 0;
   const base = per > 0 ? 60000 / per : 1500;
   const factor = micState.speaking ? 0.4 : 1;
-  // AI主体: AI弾幕がドリップ中／直近(3秒以内)に流れている間はフィラーを控える。
+  // AI主体: AIリアクションがドリップ中／直近(3秒以内)に表示されている間はフィラーを控える。
   // AIが途切れた“隙間”だけ賑わいを足し、無音を防ぐ。
   const aiFlowing = dripQueue.length > 0 || (Date.now() - lastAiCommentAt < 3000);
   // 「フィラーを追加」がON・密度>0・AIの隙間のときだけ賑わいを足す。
-  // OFF時は何も出さず＝AIが生成した弾幕だけが流れる。
+  // OFF時は何も出さず＝AIが生成したリアクションだけを表示する。
   if (cfg.ambientEnabled && per > 0 && !aiFlowing) {
     const n = micState.speaking ? 2 : 1;
     sendComments(ai.mock.generate(n, lastContext(), cfg.commentTone), 'ambient');
@@ -847,7 +847,7 @@ function lastContext() { return _lastContext; }
 function startRunning() {
   if (running) return;
   running = true;
-  logger.info('danmaku.start', {
+  logger.info('reaction.start', {
     brain: cfg.brain,
     sttBackend: cfg.sttBackend,
     micEnabled: cfg.micEnabled,
@@ -879,7 +879,7 @@ function startRunning() {
 function stopRunning(options = {}) {
   running = false;
   stopToken++;
-  logger.info('danmaku.stop');
+  logger.info('reaction.stop');
   clearInterval(captureTimer); captureTimer = null;
   clearTimeout(ambientTimer); ambientTimer = null;
   clearTimeout(dripTimer); dripTimer = null;
@@ -892,7 +892,7 @@ function stopRunning(options = {}) {
   transcriptLog = [];
   prevSignature = null;
   idleStreak = 0;
-  if (options.clearOverlay) broadcastOverlay('clear-danmaku', {});
+  if (options.clearOverlay) broadcastOverlay('clear-reactions', {});
   updateRuntimeDiagnostics({
     ai: {
       status: 'idle',
@@ -1009,7 +1009,7 @@ function buildDiagnosticsText() {
     runtimeDiagnostics: runtimeDiagnosticsSnapshot()
   });
   const lines = [
-    'Ji-Danmaku Diagnostics',
+    'Ji-Reaction Diagnostics',
     `GeneratedAt: ${new Date().toISOString()}`,
     `ConfigPath: ${configStore.CONFIG_PATH}`,
     `LogDir: ${logger.LOG_DIR}`,
@@ -1265,7 +1265,7 @@ function configDialogParent() {
 
 function configExportPayload() {
   return {
-    app: 'ji-danmaku',
+    app: 'ji-reaction',
     version: app.getVersion(),
     exportedAt: new Date().toISOString(),
     config: configStore.exportableConfig(cfg)
@@ -1275,7 +1275,7 @@ function configExportPayload() {
 async function exportConfigToFile() {
   const result = await dialog.showSaveDialog(configDialogParent(), {
     title: '設定をエクスポート',
-    defaultPath: `ji-danmaku-config-${new Date().toISOString().slice(0, 10)}.json`,
+    defaultPath: `ji-reaction-config-${new Date().toISOString().slice(0, 10)}.json`,
     filters: [{ name: 'JSON', extensions: ['json'] }]
   });
   if (result.canceled || !result.filePath) return { canceled: true };
@@ -1346,7 +1346,7 @@ ipcMain.handle('emergency-stop', (_e, reason) => {
 });
 
 ipcMain.handle('test-comment', (_e, text) => {
-  sendComments([{ text: text || 'テスト弾幕！888', style: { color: '#ffe14d', big: true } }], 'test');
+  sendComments([{ text: text || 'テストリアクション！888', style: { color: '#ffe14d', big: true } }], 'test');
   return true;
 });
 
@@ -1401,7 +1401,7 @@ app.whenReady().then(() => {
   const f8Registered = globalShortcut.register('F8', toggleRunning);
   // F7 でコントロール画面を最前面に呼び出す（裏に隠れた時の救済）
   const f7Registered = globalShortcut.register('F7', summonControl);
-  // F9 で緊急停止: 画面キャプチャ・弾幕送出・マイク監視を即停止する。
+  // F9 で緊急停止: 画面キャプチャ・リアクション送出・マイク監視を即停止する。
   const emergencyShortcut = cfg.emergencyStopShortcut || 'F9';
   const emergencyRegistered = globalShortcut.register(emergencyShortcut, () => emergencyStop('shortcut'));
   logger.info('shortcuts.registered', {

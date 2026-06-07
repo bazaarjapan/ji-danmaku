@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="stylesheet" href="control.css" />
-  <title>Ji-Danmaku コントロール</title>
+  <title>Ji-Reaction コントロール</title>
 </head>
 <body>
   <header class="app-header">
-    <h1>Ji-Danmaku</h1>
+    <h1>Ji-Reaction</h1>
     <button id="menuToggle" class="icon-btn" type="button" title="設定" aria-label="設定を開く" aria-controls="settingsPanel" aria-expanded="false">☰</button>
   </header>
 
@@ -69,7 +69,7 @@
       <div id="diagDetail" class="diag-detail"></div>
       <div id="privacyNotice" class="privacy-notice hidden"></div>
     </div>
-    <button id="toggle" class="big-btn off">▶ 字弾幕スタート</button>
+    <button id="toggle" class="big-btn off">▶ リアクション開始</button>
     <div class="live-transcript" aria-live="polite">
       <span>文字起こし</span>
       <p id="mainTranscript">まだ文字起こしはありません</p>
@@ -86,7 +86,7 @@
     <section class="mic">
       <h2>音声・マイク</h2>
       <div class="row">
-        <label><input type="checkbox" id="micEnabled" /> マイク監視（喋ると弾幕が反応）</label>
+        <label><input type="checkbox" id="micEnabled" /> マイク監視（喋るとリアクションが反応）</label>
       </div>
 
       <div id="micDetails">
@@ -153,7 +153,7 @@
     <section class="brain">
       <h2>AIブレイン</h2>
       <label class="field">
-        ブレイン（画面を見て弾幕を生成）
+        ブレイン（画面を見てリアクションを生成）
         <select id="brain">
           <option value="codex">Codex（推奨・追加課金なし）</option>
           <option value="mock">なし（フィラーのみ）</option>
@@ -166,7 +166,7 @@
     </section>
 
     <section class="flow">
-      <h2>弾幕の出し方</h2>
+      <h2>リアクションの出し方</h2>
       <label class="field">
         ノリ・キャラクター
         <select id="commentTone">
@@ -185,7 +185,7 @@
         <span class="hint">右=声に反応 / 左=画面に反応</span>
       </label>
       <div class="row">
-        <label><input type="checkbox" id="ambientEnabled" /> フィラー弾幕を追加（OFFでAI生成のみ）</label>
+        <label><input type="checkbox" id="ambientEnabled" /> フィラーリアクションを追加（OFFでAI生成のみ）</label>
       </div>
       <label class="field" id="ambientField">
         フィラー密度(/分): <span id="ambLabel"></span>
@@ -194,7 +194,7 @@
     </section>
 
     <section class="look">
-      <h2>弾幕の見た目</h2>
+      <h2>リアクションの見た目</h2>
       <label class="field">
         流れる速さ: <span id="spdLabel"></span>
         <input type="range" id="speedMs" min="4000" max="14000" step="500" />
@@ -250,11 +250,11 @@
       <label class="field">
         Zoom/OBS共有
         <select id="overlayContentProtection">
-          <option value="false">弾幕を共有に映す</option>
+          <option value="false">共有互換</option>
           <option value="auto">AIスクショから隠す（自動）</option>
           <option value="true">AIスクショから隠す（強制）</option>
         </select>
-        <span class="hint">ZoomやOBSで全画面共有するときは「弾幕を共有に映す」を使います。</span>
+        <span class="hint">画面キャプチャとの互換性を優先するときは「共有互換」を使います。</span>
       </label>
       <div class="row">
         <label><input type="checkbox" id="privacyExclusionsEnabled" /> 除外ルールを有効にする</label>
@@ -277,7 +277,7 @@
     <section class="test-sec">
       <h2>テスト</h2>
       <div class="test">
-        <input type="text" id="testText" placeholder="テスト弾幕を入力…" />
+        <input type="text" id="testText" placeholder="テストリアクションを入力…" />
         <button id="testBtn">流す</button>
       </div>
     </section>

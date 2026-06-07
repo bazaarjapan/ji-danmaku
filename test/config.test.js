@@ -1,6 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { DEFAULTS, deepMerge, defaultConfig, exportableConfig, sanitizeImportedConfig } = require('../electron/config');
 
@@ -88,6 +91,52 @@ test('defaultConfig returns a deep clone', () => {
   const first = defaultConfig();
   first.codex.timeoutMs = 1;
   assert.equal(defaultConfig().codex.timeoutMs, DEFAULTS.codex.timeoutMs);
+});
+
+test('load preserves legacy ji-danmaku config after app rename', () => {
+  const modulePath = require.resolve('../electron/config');
+  const originalAppData = process.env.APPDATA;
+  const tempAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'ji-reaction-config-'));
+  const legacyDir = path.join(tempAppData, 'ji-danmaku');
+  fs.mkdirSync(legacyDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacyDir, 'config.json'),
+    JSON.stringify({
+      micEnabled: false,
+      ngWords: ['legacy'],
+      overlayContentProtection: 'auto',
+      codex: { timeoutMs: 12345 }
+    }),
+    'utf8'
+  );
+
+  try {
+    process.env.APPDATA = tempAppData;
+    delete require.cache[modulePath];
+    const freshConfig = require('../electron/config');
+    const loaded = freshConfig.load();
+
+    assert.equal(loaded.micEnabled, false);
+    assert.deepEqual(loaded.ngWords, ['legacy']);
+    assert.equal(loaded.overlayContentProtection, 'auto');
+    assert.equal(loaded.codex.timeoutMs, 12345);
+
+    assert.equal(freshConfig.save(loaded), true);
+    assert.equal(fs.existsSync(freshConfig.CONFIG_PATH), true);
+    assert.equal(
+      JSON.parse(fs.readFileSync(freshConfig.CONFIG_PATH, 'utf8')).codex.timeoutMs,
+      12345
+    );
+  } finally {
+    if (originalAppData === undefined) {
+      delete process.env.APPDATA;
+    } else {
+      process.env.APPDATA = originalAppData;
+    }
+    delete require.cache[modulePath];
+    require('../electron/config');
+    fs.rmSync(tempAppData, { recursive: true, force: true });
+  }
 });
 
 test('default voice reactivity starts at a voice-forward balance', () => {

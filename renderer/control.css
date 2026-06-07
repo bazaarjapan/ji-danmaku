@@ -57,6 +57,90 @@ h2 { margin: 0 0 10px; font-size: 13px; color: var(--sub); font-weight: 600; }
   padding: 0;
   border-top: 0;
 }
+.main-toggle:has(.mac-setup-banner:not(.hidden)) {
+  grid-template-rows: auto auto auto minmax(118px, 1fr);
+}
+
+.mac-setup-banner {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(255, 210, 77, .42);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 210, 77, .1), transparent 46%),
+    #11131a;
+}
+.mac-setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.mac-setup-head strong {
+  display: block;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.3;
+}
+.mac-setup-head .icon-btn {
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+.mac-setup-checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mac-setup-chip {
+  min-height: 48px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #596071;
+  border-radius: 8px;
+  background: rgba(13, 15, 21, .72);
+}
+.mac-setup-chip strong,
+.mac-setup-chip span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mac-setup-chip strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+.mac-setup-chip span {
+  margin-top: 3px;
+  color: var(--sub);
+  font-size: 10px;
+}
+.mac-setup-chip[data-status=ok] { border-left-color: var(--ok); }
+.mac-setup-chip[data-status=warn] { border-left-color: var(--warn); }
+.mac-setup-chip[data-status=error] { border-left-color: var(--danger); }
+.mac-setup-actions {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(3, 1fr);
+  gap: 6px;
+}
+.mac-setup-actions button {
+  min-width: 0;
+  padding: 8px 7px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent2);
+  color: #06222e;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mac-setup-actions button.ghost {
+  background: var(--line);
+  color: var(--ink);
+}
 
 .live-console {
   width: 100%;

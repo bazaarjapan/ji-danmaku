@@ -1,6 +1,6 @@
 {
   "name": "ji-reaction-overlay",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "画面とマイクに反応する短いAIリアクションを、透明なデスクトップ補助オーバーレイに表示するElectronアプリ。",
   "main": "electron/main.js",
   "scripts": {
@@ -56,7 +56,7 @@
       "signAndEditExecutable": false
     },
     "mac": {
-      "identity": null,
+      "identity": "-",
       "icon": "build/icon-mac.png",
       "target": [
         "dmg",

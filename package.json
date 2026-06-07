@@ -9,8 +9,8 @@
     "test": "node --test",
     "dist": "electron-builder --win",
     "dist:win": "electron-builder --win --publish never",
-    "dist:mac": "electron-builder --mac --publish never",
-    "dist:all": "electron-builder --win --mac --publish never",
+    "dist:mac": "node scripts/build-mac.js",
+    "dist:all": "npm run dist:win && npm run dist:mac",
     "dist:mac:release": "node scripts/verify-release-env.js mac && electron-builder --mac -c electron-builder.release.cjs",
     "dist:release": "node scripts/verify-release-env.js mac && electron-builder --win --mac -c electron-builder.release.cjs"
   },
@@ -20,7 +20,9 @@
     "appId": "com.bazaarjapan.ji-reaction",
     "productName": "Ji-Reaction",
     "asar": false,
+    "afterExtract": "scripts/after-extract.js",
     "afterPack": "scripts/after-pack.js",
+    "afterSign": "scripts/after-sign.js",
     "files": [
       "**/*",
       "!.env",

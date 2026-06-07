@@ -1,6 +1,7 @@
 'use strict';
 
 const { notarize } = require('@electron/notarize');
+const { cleanupXattrs } = require('./mac-xattrs');
 
 function requiredEnv(name) {
   const value = process.env[name];
@@ -26,10 +27,21 @@ function notarizationCredentials() {
   };
 }
 
+function hasNotarizationCredentials() {
+  return Boolean(
+    process.env.APPLE_NOTARY_KEYCHAIN_PROFILE ||
+    (process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID)
+  );
+}
+
 module.exports = async function afterSign(context) {
   if (context.electronPlatformName !== 'darwin') return;
 
   const appPath = `${context.appOutDir}/${context.packager.appInfo.productFilename}.app`;
+  cleanupXattrs(appPath);
+
+  if (!hasNotarizationCredentials()) return;
+
   await notarize({
     appBundleId: context.packager.appInfo.id,
     appPath,
